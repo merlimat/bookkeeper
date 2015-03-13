@@ -17,22 +17,15 @@
  */
 package org.apache.bookkeeper.proto;
 
-import java.io.IOException;
-
 import org.apache.bookkeeper.bookie.Bookie;
-import org.apache.bookkeeper.bookie.BookieException;
-import org.apache.bookkeeper.net.BookieSocketAddress;
-import org.apache.bookkeeper.proto.BookieProtocol.Request;
-import org.apache.bookkeeper.proto.BookkeeperInternalCallbacks.WriteCallback;
-import org.apache.bookkeeper.util.MathUtils;
-import org.jboss.netty.channel.Channel;
+import org.apache.bookkeeper.util.SafeRunnable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
  * Processes trim ledger requests
  */
-class TrimLedgerProcessor implements Runnable {
+class TrimLedgerProcessor extends SafeRunnable {
 
     private final static Logger LOG = LoggerFactory.getLogger(TrimLedgerProcessor.class);
 
@@ -47,7 +40,7 @@ class TrimLedgerProcessor implements Runnable {
     }
 
     @Override
-    public void run() {
+    public void safeRun() {
         try {
             bookie.trim(ledgerId, entryId);
         } catch (Exception e) {
