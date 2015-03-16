@@ -25,8 +25,13 @@ public class EntryCache {
     }
 
     public void put(long ledgerId, long entryId, ByteBuffer entry) {
-        ByteBuf buffer = allocator.buffer(entry.remaining(), entry.remaining());
+        ByteBuf buffer = allocator.heapBuffer(entry.remaining(), entry.remaining());
         buffer.writeBytes(entry.duplicate());
+
+        putNoCopy(ledgerId, entryId, buffer);
+    }
+
+    void putNoCopy(long ledgerId, long entryId, ByteBuf buffer) {
         ByteBuf oldValue = cache.put(new LongPair(ledgerId, entryId), buffer);
         if (oldValue != null) {
             size.addAndGet(-oldValue.readableBytes());
