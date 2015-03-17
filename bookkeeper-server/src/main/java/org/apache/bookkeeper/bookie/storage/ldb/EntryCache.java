@@ -1,9 +1,7 @@
 package org.apache.bookkeeper.bookie.storage.ldb;
 
 import io.netty.buffer.ByteBuf;
-import io.netty.buffer.ByteBufAllocator;
 
-import java.nio.ByteBuffer;
 import java.util.Map.Entry;
 import java.util.NavigableMap;
 import java.util.Set;
@@ -13,41 +11,39 @@ import java.util.concurrent.atomic.AtomicLong;
 
 public class EntryCache {
     private final ConcurrentNavigableMap<LongPair, ByteBuf> cache;
-    private final ByteBufAllocator allocator;
     private final AtomicLong size;
     private final AtomicLong count;
 
-    public EntryCache(ByteBufAllocator allocator) {
+    public EntryCache() {
         this.cache = new ConcurrentSkipListMap<LongPair, ByteBuf>();
-        this.allocator = allocator;
         this.size = new AtomicLong(0L);
         this.count = new AtomicLong(0L);
     }
 
-    public void put(long ledgerId, long entryId, ByteBuffer entry) {
-        ByteBuf buffer = allocator.heapBuffer(entry.remaining(), entry.remaining());
-        buffer.writeBytes(entry.duplicate());
-
-        putNoCopy(ledgerId, entryId, buffer);
-    }
-
-    void putNoCopy(long ledgerId, long entryId, ByteBuf buffer) {
-        ByteBuf oldValue = cache.put(new LongPair(ledgerId, entryId), buffer);
+    public void put(long ledgerId, long entryId, ByteBuf entry) {
+        entry.retain();
+        ByteBuf oldValue = cache.put(new LongPair(ledgerId, entryId), entry);
         if (oldValue != null) {
             size.addAndGet(-oldValue.readableBytes());
             oldValue.release();
         }
 
-        size.addAndGet(buffer.readableBytes());
+        size.addAndGet(entry.readableBytes());
         count.incrementAndGet();
     }
 
-    public ByteBuffer get(long ledgerId, long entryId) {
+    public ByteBuf get(long ledgerId, long entryId) {
         ByteBuf buffer = cache.get(new LongPair(ledgerId, entryId));
         if (buffer == null) {
             return null;
         } else {
-            return toByteBuffer(buffer);
+            try {
+                buffer.retain();
+                return buffer;
+            } catch (Throwable t) {
+                // Buffer was already destroyed between get() and retain()
+                return null;
+            }
         }
     }
 
@@ -60,14 +56,21 @@ public class EntryCache {
         }
     }
 
-    public ByteBuffer getLastEntry(long ledgerId) {
+    public ByteBuf getLastEntry(long ledgerId) {
         // Next entry key is the first entry of the next ledger, we first seek to that entry and then step back to find
         // the last entry on ledgerId
         LongPair nextEntryKey = new LongPair(ledgerId + 1, 0);
 
         Entry<LongPair, ByteBuf> mapEntry = cache.headMap(nextEntryKey).lastEntry();
         if (mapEntry != null && mapEntry.getKey().first == ledgerId) {
-            return toByteBuffer(mapEntry.getValue());
+            ByteBuf entry = mapEntry.getValue();
+            try {
+                entry.retain();
+                return entry;
+            } catch (Throwable t) {
+                // Buffer was already destroyed between get() and retain()
+                return null;
+            }
         } else {
             return null;
         }
@@ -130,12 +133,5 @@ public class EntryCache {
             content.release();
         }
         count.set(0L);
-    }
-
-    private static ByteBuffer toByteBuffer(ByteBuf buf) {
-        ByteBuffer buffer = ByteBuffer.allocate(buf.readableBytes());
-        buf.duplicate().readBytes(buffer);
-        buffer.flip();
-        return buffer;
     }
 }

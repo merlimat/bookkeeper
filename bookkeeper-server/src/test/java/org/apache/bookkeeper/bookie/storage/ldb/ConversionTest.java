@@ -1,5 +1,8 @@
 package org.apache.bookkeeper.bookie.storage.ldb;
 
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
+
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -57,11 +60,10 @@ public class ConversionTest {
             interleavedStorage.setFenced(ledgerId);
 
             for (long entryId = 0; entryId < 10000; entryId++) {
-                ByteBuffer entry = ByteBuffer.allocate(128);
-                entry.putLong(ledgerId);
-                entry.putLong(entryId);
-                entry.put(("entry-" + entryId).getBytes());
-                entry.flip();
+                ByteBuf entry = Unpooled.buffer(128);
+                entry.writeLong(ledgerId);
+                entry.writeLong(entryId);
+                entry.writeBytes(("entry-" + entryId).getBytes());
 
                 interleavedStorage.addEntry(entry);
             }
@@ -97,13 +99,12 @@ public class ConversionTest {
             Assert.assertEquals("ledger-" + ledgerId, new String(dbStorage.readMasterKey(ledgerId)));
 
             for (long entryId = 0; entryId < 10000; entryId++) {
-                ByteBuffer entry = ByteBuffer.allocate(128);
-                entry.putLong(ledgerId);
-                entry.putLong(entryId);
-                entry.put(("entry-" + entryId).getBytes());
-                entry.flip();
+                ByteBuf entry = Unpooled.buffer(1024);
+                entry.writeLong(ledgerId);
+                entry.writeLong(entryId);
+                entry.writeBytes(("entry-" + entryId).getBytes());
 
-                ByteBuffer result = dbStorage.getEntry(ledgerId, entryId);
+                ByteBuf result = dbStorage.getEntry(ledgerId, entryId);
                 Assert.assertEquals(entry, result);
 
                 try {

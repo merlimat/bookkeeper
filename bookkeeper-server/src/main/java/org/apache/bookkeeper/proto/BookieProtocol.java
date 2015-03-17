@@ -22,8 +22,7 @@ package org.apache.bookkeeper.proto;
  */
 
 import io.netty.buffer.ByteBuf;
-
-import java.nio.ByteBuffer;
+import io.netty.buffer.Unpooled;
 
 import org.apache.bookkeeper.proto.BookkeeperProtocol.AuthMessage;
 
@@ -272,10 +271,6 @@ public interface BookieProtocol {
             return data;
         }
 
-        ByteBuffer getDataAsByteBuffer() {
-            return data.nioBuffer().slice();
-        }
-
         boolean isRecoveryAdd() {
             return (flags & FLAG_RECOVERY_ADD) == FLAG_RECOVERY_ADD;
         }
@@ -367,7 +362,7 @@ public interface BookieProtocol {
 
         ReadResponse(byte protocolVersion, int errorCode, long ledgerId, long entryId) {
             super(protocolVersion, READENTRY, errorCode, ledgerId, entryId);
-            this.data = null;
+            this.data = Unpooled.EMPTY_BUFFER;
         }
 
         ReadResponse(byte protocolVersion, int errorCode, long ledgerId, long entryId, ByteBuf data) {

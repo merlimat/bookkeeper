@@ -230,7 +230,7 @@ public class TestPerChannelBookieClient extends BookKeeperClusterTestCase {
 
         Bookie delayBookie = new Bookie(conf) {
             @Override
-            public ByteBuffer readEntry(long ledgerId, long entryId)
+            public ByteBuf readEntry(long ledgerId, long entryId)
                     throws IOException, NoLedgerException {
                 try {
                     Thread.sleep(3000);

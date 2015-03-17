@@ -18,7 +18,6 @@
 package org.apache.hedwig.server.persistence;
 
 import java.net.InetAddress;
-import java.nio.ByteBuffer;
 import java.io.File;
 import java.io.IOException;
 import java.util.LinkedList;
@@ -48,6 +47,8 @@ import org.apache.hedwig.zookeeper.ZooKeeperTestBase;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.netty.buffer.ByteBuf;
+
 /**
  * This is a base class for any tests that require a BookKeeper client/server
  * setup.
@@ -66,7 +67,7 @@ public class BookKeeperTestBase extends ZooKeeperTestBase {
         }
 
         @Override
-        public ByteBuffer readEntry(long ledgerId, long entryId)
+        public ByteBuf readEntry(long ledgerId, long entryId)
             throws IOException, NoLedgerException {
             if (readDelay > 0) {
                 try {

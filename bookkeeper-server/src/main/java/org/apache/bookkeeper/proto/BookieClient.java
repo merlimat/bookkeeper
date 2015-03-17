@@ -386,7 +386,6 @@ public class BookieClient implements PerChannelBookieClientFactory {
         Counter counter = new Counter();
         byte hello[] = "hello".getBytes(UTF_8);
         long ledger = Long.parseLong(args[2]);
-        ThreadFactoryBuilder tfb = new ThreadFactoryBuilder();
         EventLoopGroup eventLoopGroup = new NioEventLoopGroup(1);
         OrderedSafeExecutor executor = new OrderedSafeExecutor(1,
                 "BookieClientWorker");

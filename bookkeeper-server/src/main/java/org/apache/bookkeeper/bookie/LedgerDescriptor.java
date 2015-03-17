@@ -21,6 +21,8 @@
 
 package org.apache.bookkeeper.bookie;
 
+import io.netty.buffer.ByteBuf;
+
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
@@ -57,7 +59,7 @@ public abstract class LedgerDescriptor {
     abstract boolean setFenced() throws IOException;
     abstract boolean isFenced() throws IOException;
 
-    abstract long addEntry(ByteBuffer entry) throws IOException;
-    abstract ByteBuffer readEntry(long entryId) throws IOException;
+    abstract long addEntry(ByteBuf entry) throws IOException;
+    abstract ByteBuf readEntry(long entryId) throws IOException;
     abstract void trim(long lastEntryId) throws IOException;
 }

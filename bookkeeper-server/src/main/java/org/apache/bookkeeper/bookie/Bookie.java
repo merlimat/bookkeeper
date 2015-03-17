@@ -22,6 +22,8 @@
 package org.apache.bookkeeper.bookie;
 
 import static com.google.common.base.Charsets.UTF_8;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -46,9 +48,7 @@ import org.apache.bookkeeper.bookie.LedgerDirsManager.NoWritableLedgerDirExcepti
 import org.apache.bookkeeper.conf.ServerConfiguration;
 import org.apache.bookkeeper.jmx.BKMBeanInfo;
 import org.apache.bookkeeper.jmx.BKMBeanRegistry;
-
 import org.apache.bookkeeper.net.BookieSocketAddress;
-
 import org.apache.bookkeeper.net.DNS;
 import org.apache.bookkeeper.proto.BookkeeperInternalCallbacks.WriteCallback;
 import org.apache.bookkeeper.stats.Counter;
@@ -63,9 +63,7 @@ import org.apache.bookkeeper.versioning.Version;
 import org.apache.bookkeeper.versioning.Versioned;
 import org.apache.bookkeeper.zookeeper.ZooKeeperWatcherBase;
 import org.apache.commons.io.FileUtils;
-
 import org.apache.zookeeper.KeeperException;
-
 import org.apache.zookeeper.ZooKeeper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -595,7 +593,7 @@ public class Bookie extends BookieCriticalThread {
                         LedgerDescriptor handle = handles.getHandle(ledgerId, key);
 
                         recBuff.rewind();
-                        handle.addEntry(recBuff);
+                        handle.addEntry(Unpooled.wrappedBuffer(recBuff));
                     }
                 } catch (NoLedgerException nsle) {
                     LOG.debug("Skip replaying entries of ledger {} since it was deleted.", ledgerId);
@@ -952,9 +950,9 @@ public class Bookie extends BookieCriticalThread {
      *
      * @throws BookieException if masterKey does not match the master key of the ledger
      */
-    private LedgerDescriptor getLedgerForEntry(ByteBuffer entry, final byte[] masterKey)
+    private LedgerDescriptor getLedgerForEntry(ByteBuf entry, final byte[] masterKey)
             throws IOException, BookieException {
-        final long ledgerId = entry.getLong();
+        final long ledgerId = entry.readLong();
         LedgerDescriptor l = handles.getHandle(ledgerId, masterKey);
         try {
             // Force the load into masterKey cache
@@ -983,14 +981,13 @@ public class Bookie extends BookieCriticalThread {
     /**
      * Add an entry to a ledger as specified by handle.
      */
-    private void addEntryInternal(LedgerDescriptor handle, ByteBuffer entry, WriteCallback cb, Object ctx)
+    private void addEntryInternal(LedgerDescriptor handle, ByteBuf entry, WriteCallback cb, Object ctx)
             throws IOException, BookieException {
         long ledgerId = handle.getLedgerId();
-        entry.rewind();
+        entry.resetReaderIndex();
         long entryId = handle.addEntry(entry);
 
-        entry.rewind();
-        writeBytes.add(entry.remaining());
+        writeBytes.add(entry.readableBytes());
 
         LOG.trace("Adding {}@{}", entryId, ledgerId);
         getJournal(ledgerId).logAddEntry(entry, cb, ctx);
@@ -1002,7 +999,7 @@ public class Bookie extends BookieCriticalThread {
      * so that they exist on a quorum of bookies. The corresponding client side call for this
      * is not exposed to users.
      */
-    public void recoveryAddEntry(ByteBuffer entry, WriteCallback cb, Object ctx, byte[] masterKey)
+    public void recoveryAddEntry(ByteBuf entry, WriteCallback cb, Object ctx, byte[] masterKey)
             throws IOException, BookieException {
         try {
             LedgerDescriptor handle = getLedgerForEntry(entry, masterKey);
@@ -1019,7 +1016,7 @@ public class Bookie extends BookieCriticalThread {
      * Add entry to a ledger.
      * @throws BookieException.LedgerFencedException if the ledger is fenced
      */
-    public void addEntry(ByteBuffer entry, WriteCallback cb, Object ctx, byte[] masterKey)
+    public void addEntry(ByteBuf entry, WriteCallback cb, Object ctx, byte[] masterKey)
             throws IOException, BookieException {
         try {
             LedgerDescriptor handle = getLedgerForEntry(entry, masterKey);
@@ -1066,12 +1063,12 @@ public class Bookie extends BookieCriticalThread {
         }
     }
 
-    public ByteBuffer readEntry(long ledgerId, long entryId)
+    public ByteBuf readEntry(long ledgerId, long entryId)
             throws IOException, NoLedgerException {
         LedgerDescriptor handle = handles.getReadOnlyHandle(ledgerId);
         LOG.trace("Reading {}@{}", entryId, ledgerId);
-        ByteBuffer entry = handle.readEntry(entryId);
-        readBytes.add(entry.remaining());
+        ByteBuf entry = handle.readEntry(entryId);
+        readBytes.add(entry.readableBytes());
         return entry;
     }
 
@@ -1207,11 +1204,9 @@ public class Bookie extends BookieCriticalThread {
         CounterCallback cb = new CounterCallback();
         long start = MathUtils.now();
         for (int i = 0; i < 100000; i++) {
-            ByteBuffer buff = ByteBuffer.allocate(1024);
-            buff.putLong(1);
-            buff.putLong(i);
-            buff.limit(1024);
-            buff.position(0);
+            ByteBuf buff = Unpooled.buffer(1024);
+            buff.writeLong(1);
+            buff.writeLong(i);
             cb.incCount();
             b.addEntry(buff, cb, null, new byte[0]);
         }

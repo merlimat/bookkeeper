@@ -21,8 +21,9 @@
 
 package org.apache.bookkeeper.bookie;
 
+import io.netty.buffer.ByteBuf;
+
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.util.Arrays;
 
 import org.slf4j.Logger;
@@ -69,19 +70,19 @@ public class LedgerDescriptorImpl extends LedgerDescriptor {
     }
 
     @Override
-    long addEntry(ByteBuffer entry) throws IOException {
-        long ledgerId = entry.getLong();
+    long addEntry(ByteBuf entry) throws IOException {
+        long ledgerId = entry.readLong();
 
         if (ledgerId != this.ledgerId) {
             throw new IOException("Entry for ledger " + ledgerId + " was sent to " + this.ledgerId);
         }
-        entry.rewind();
+        entry.resetReaderIndex();
 
         return ledgerStorage.addEntry(entry);
     }
 
     @Override
-    ByteBuffer readEntry(long entryId) throws IOException {
+    ByteBuf readEntry(long entryId) throws IOException {
         return ledgerStorage.getEntry(ledgerId, entryId);
     }
 

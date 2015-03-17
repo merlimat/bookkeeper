@@ -21,6 +21,9 @@
 
 package org.apache.bookkeeper.bookie;
 
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
+
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -205,18 +208,18 @@ public class InterleavedLedgerStorage implements CompactableLedgerStorage, Entry
     }
 
     @Override
-    synchronized public long addEntry(ByteBuffer entry) throws IOException {
-        long ledgerId = entry.getLong();
-        long entryId = entry.getLong();
-        entry.rewind();
+    synchronized public long addEntry(ByteBuf entry) throws IOException {
+        long ledgerId = entry.readLong();
+        long entryId = entry.readLong();
+        entry.resetReaderIndex();
 
-        processEntry(ledgerId, entryId, entry);
+        processEntry(ledgerId, entryId, entry.nioBuffer());
 
         return entryId;
     }
 
     @Override
-    public ByteBuffer getEntry(long ledgerId, long entryId) throws IOException {
+    public ByteBuf getEntry(long ledgerId, long entryId) throws IOException {
         long offset;
         /*
          * If entryId is BookieProtocol.LAST_ADD_CONFIRMED, then return the last written.
@@ -247,7 +250,7 @@ public class InterleavedLedgerStorage implements CompactableLedgerStorage, Entry
         try {
             byte[] retBytes = entryLogger.readEntry(ledgerId, entryId, offset);
             success = true;
-            return ByteBuffer.wrap(retBytes);
+            return Unpooled.wrappedBuffer(retBytes);
         } finally {
             if (success) {
                 getEntryStats.registerSuccessfulEvent(MathUtils.elapsedNanos(startTimeNanos), TimeUnit.NANOSECONDS);

@@ -3,10 +3,12 @@ package org.apache.bookkeeper.bookie.storage.ldb;
 import static junit.framework.Assert.assertEquals;
 import static junit.framework.Assert.assertTrue;
 import static junit.framework.Assert.fail;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufUtil;
+import io.netty.buffer.Unpooled;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.util.List;
 
 import org.apache.bookkeeper.bookie.Bookie;
@@ -93,20 +95,19 @@ public class DbLedgerStorageTest {
         assertEquals(Lists.newArrayList(3l), Lists.newArrayList(storage.getActiveLedgersInRange(0, 4)));
 
         // Add / read entries
-        ByteBuffer entry = ByteBuffer.allocate(1024);
-        entry.putLong(4); // ledger id
-        entry.putLong(1); // entry id
-        entry.put("entry-1".getBytes());
-        entry.flip();
+        ByteBuf entry = Unpooled.buffer(1024);
+        entry.writeLong(4); // ledger id
+        entry.writeLong(1); // entry id
+        entry.writeBytes("entry-1".getBytes());
 
         assertEquals(false, ((DbLedgerStorage) storage).isFlushRequired());
 
-        assertEquals(1, storage.addEntry(entry.duplicate()));
+        assertEquals(1, storage.addEntry(entry));
 
         assertEquals(true, ((DbLedgerStorage) storage).isFlushRequired());
 
         // Read from write cache
-        ByteBuffer res = storage.getEntry(4, 1);
+        ByteBuf res = storage.getEntry(4, 1);
         assertEquals(entry, res);
 
         storage.flush();
@@ -124,11 +125,10 @@ public class DbLedgerStorageTest {
             // ok
         }
 
-        ByteBuffer entry2 = ByteBuffer.allocate(1024);
-        entry2.putLong(4); // ledger id
-        entry2.putLong(2); // entry id
-        entry2.put("entry-2".getBytes());
-        entry2.flip();
+        ByteBuf entry2 = Unpooled.buffer(1024);
+        entry2.writeLong(4); // ledger id
+        entry2.writeLong(2); // entry id
+        entry2.writeBytes("entry-2".getBytes());
 
         storage.addEntry(entry2);
 
@@ -136,18 +136,16 @@ public class DbLedgerStorageTest {
         res = storage.getEntry(4, BookieProtocol.LAST_ADD_CONFIRMED);
         assertEquals(entry2, res);
 
-        ByteBuffer entry3 = ByteBuffer.allocate(1024);
-        entry3.putLong(4); // ledger id
-        entry3.putLong(3); // entry id
-        entry3.put("entry-3".getBytes());
-        entry3.flip();
+        ByteBuf entry3 = Unpooled.buffer(1024);
+        entry3.writeLong(4); // ledger id
+        entry3.writeLong(3); // entry id
+        entry3.writeBytes("entry-3".getBytes());
         storage.addEntry(entry3);
 
-        ByteBuffer entry4 = ByteBuffer.allocate(1024);
-        entry4.putLong(4); // ledger id
-        entry4.putLong(4); // entry id
-        entry4.put("entry-4".getBytes());
-        entry4.flip();
+        ByteBuf entry4 = Unpooled.buffer(1024);
+        entry4.writeLong(4); // ledger id
+        entry4.writeLong(4); // entry id
+        entry4.writeBytes("entry-4".getBytes());
         storage.addEntry(entry4);
 
         // Trimming should be disabled by default
@@ -170,7 +168,7 @@ public class DbLedgerStorageTest {
             // ok
         }
 
-        storage.addEntry(entry2);
+        storage.addEntry(Unpooled.wrappedBuffer(entry2));
         res = storage.getEntry(4, BookieProtocol.LAST_ADD_CONFIRMED);
         assertEquals(entry2, res);
 
@@ -201,27 +199,27 @@ public class DbLedgerStorageTest {
     public void testBookieCompaction() throws Exception {
         storage.setMasterKey(4, "key".getBytes());
 
-        ByteBuffer entry3 = ByteBuffer.allocate(1024);
-        entry3.putLong(4); // ledger id
-        entry3.putLong(3); // entry id
-        entry3.put("entry-3".getBytes());
-        entry3.flip();
+        ByteBuf entry3 = Unpooled.buffer(1024);
+        entry3.writeLong(4); // ledger id
+        entry3.writeLong(3); // entry id
+        entry3.writeBytes("entry-3".getBytes());
         storage.addEntry(entry3);
 
         // Simulate bookie compaction
         EntryLogger entryLogger = ((DbLedgerStorage) storage).getEntryLogger();
         // Rewrite entry-3
-        ByteBuffer newEntry3 = ByteBuffer.allocate(1024);
-        newEntry3.putLong(4); // ledger id
-        newEntry3.putLong(3); // entry id
-        newEntry3.put("new-entry-3".getBytes());
-        newEntry3.flip();
-        long location = entryLogger.addEntry(4, newEntry3.duplicate(), false);
+        ByteBuf newEntry3 = Unpooled.buffer(1024);
+        newEntry3.writeLong(4); // ledger id
+        newEntry3.writeLong(3); // entry id
+        newEntry3.writeBytes("new-entry-3".getBytes());
+        long location = entryLogger.addEntry(4, newEntry3.nioBuffer(), false);
 
         List<EntryLocation> locations = Lists.newArrayList(new EntryLocation(4, 3, location));
         storage.updateEntriesLocations(locations);
 
-        ByteBuffer res = storage.getEntry(4, 3);
+        ByteBuf res = storage.getEntry(4, 3);
+        System.out.println("res:       " + ByteBufUtil.hexDump(res));
+        System.out.println("newEntry3: " + ByteBufUtil.hexDump(newEntry3));
         assertEquals(newEntry3, res);
 
         storage.shutdown();
@@ -256,25 +254,23 @@ public class DbLedgerStorageTest {
             // ok
         }
 
-        ByteBuffer entry1 = ByteBuffer.allocate(1024);
-        entry1.putLong(1); // ledger id
-        entry1.putLong(1); // entry id
-        entry1.put("entry-1".getBytes());
-        entry1.flip();
+        ByteBuf entry1 = Unpooled.buffer(1024);
+        entry1.writeLong(1); // ledger id
+        entry1.writeLong(1); // entry id
+        entry1.writeBytes("entry-1".getBytes());
 
         storage.addEntry(entry1);
         storage.flush();
 
-        ByteBuffer newEntry1 = ByteBuffer.allocate(1024);
-        newEntry1.putLong(1); // ledger id
-        newEntry1.putLong(1); // entry id
-        newEntry1.put("new-entry-1".getBytes());
-        newEntry1.flip();
+        ByteBuf newEntry1 = Unpooled.buffer(1024);
+        newEntry1.writeLong(1); // ledger id
+        newEntry1.writeLong(1); // entry id
+        newEntry1.writeBytes("new-entry-1".getBytes());
 
         storage.addEntry(newEntry1);
         storage.flush();
 
-        ByteBuffer response = storage.getEntry(1, 1);
+        ByteBuf response = storage.getEntry(1, 1);
         assertEquals(newEntry1, response);
     }
 
@@ -282,11 +278,10 @@ public class DbLedgerStorageTest {
     public void testEntriesOutOfOrder() throws Exception {
         storage.setMasterKey(1, "key".getBytes());
 
-        ByteBuffer entry2 = ByteBuffer.allocate(1024);
-        entry2.putLong(1); // ledger id
-        entry2.putLong(2); // entry id
-        entry2.put("entry-2".getBytes());
-        entry2.flip();
+        ByteBuf entry2 = Unpooled.buffer(1024);
+        entry2.writeLong(1); // ledger id
+        entry2.writeLong(2); // entry id
+        entry2.writeBytes("entry-2".getBytes());
 
         storage.addEntry(entry2);
 
@@ -297,14 +292,13 @@ public class DbLedgerStorageTest {
             // Ok, entry doesn't exist
         }
 
-        ByteBuffer res = storage.getEntry(1, 2);
+        ByteBuf res = storage.getEntry(1, 2);
         assertEquals(entry2, res);
 
-        ByteBuffer entry1 = ByteBuffer.allocate(1024);
-        entry1.putLong(1); // ledger id
-        entry1.putLong(1); // entry id
-        entry1.put("entry-1".getBytes());
-        entry1.flip();
+        ByteBuf entry1 = Unpooled.buffer(1024);
+        entry1.writeLong(1); // ledger id
+        entry1.writeLong(1); // entry id
+        entry1.writeBytes("entry-1".getBytes());
 
         storage.addEntry(entry1);
 
@@ -327,11 +321,10 @@ public class DbLedgerStorageTest {
     public void testEntriesOutOfOrderWithFlush() throws Exception {
         storage.setMasterKey(1, "key".getBytes());
 
-        ByteBuffer entry2 = ByteBuffer.allocate(1024);
-        entry2.putLong(1); // ledger id
-        entry2.putLong(2); // entry id
-        entry2.put("entry-2".getBytes());
-        entry2.flip();
+        ByteBuf entry2 = Unpooled.buffer(1024);
+        entry2.writeLong(1); // ledger id
+        entry2.writeLong(2); // entry id
+        entry2.writeBytes("entry-2".getBytes());
 
         storage.addEntry(entry2);
 
@@ -342,7 +335,7 @@ public class DbLedgerStorageTest {
             // Ok, entry doesn't exist
         }
 
-        ByteBuffer res = storage.getEntry(1, 2);
+        ByteBuf res = storage.getEntry(1, 2);
         assertEquals(entry2, res);
 
         storage.flush();
@@ -357,11 +350,10 @@ public class DbLedgerStorageTest {
         res = storage.getEntry(1, 2);
         assertEquals(entry2, res);
 
-        ByteBuffer entry1 = ByteBuffer.allocate(1024);
-        entry1.putLong(1); // ledger id
-        entry1.putLong(1); // entry id
-        entry1.put("entry-1".getBytes());
-        entry1.flip();
+        ByteBuf entry1 = Unpooled.buffer(1024);
+        entry1.writeLong(1); // ledger id
+        entry1.writeLong(1); // entry id
+        entry1.writeBytes("entry-1".getBytes());
 
         storage.addEntry(entry1);
 
