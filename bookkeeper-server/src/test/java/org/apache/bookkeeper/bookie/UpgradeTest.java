@@ -81,7 +81,7 @@ public class UpgradeTest extends BookKeeperClusterTestCase {
         long logId = System.currentTimeMillis();
         JournalChannel jc = new JournalChannel(journalDir, logId);
 
-        BufferedChannel bc = jc.getBufferedChannel();
+        FileChannel bc = jc.getChannel();
 
         long ledgerId = 1;
         byte[] data = new byte[1024];
@@ -100,7 +100,6 @@ public class UpgradeTest extends BookKeeperClusterTestCase {
             bc.write(packet.nioBuffer());
             packet.release();
         }
-        bc.flush(true);
 
         return jc;
     }
