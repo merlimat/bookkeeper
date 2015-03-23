@@ -373,10 +373,12 @@ public class BookieProtoEncoding {
     public static class RequestDecoder extends MessageToMessageDecoder<Object> {
         final EnDecoder REQ_PREV3;
         final EnDecoder REQ_V3;
+        boolean usingV3Protocol;
 
         RequestDecoder(ExtensionRegistry extensionRegistry) {
             REQ_PREV3 = new RequestEnDeCoderPreV3(extensionRegistry);
             REQ_V3 = new RequestEnDecoderV3(extensionRegistry);
+            usingV3Protocol = true;
         }
 
         @Override
@@ -391,10 +393,16 @@ public class BookieProtoEncoding {
             ByteBuf buffer = (ByteBuf) msg;
             try {
                 buffer.markReaderIndex();
-                try {
-                    out.add(REQ_V3.decode(buffer));
-                } catch (InvalidProtocolBufferException e) {
-                    buffer.resetReaderIndex();
+
+                if (usingV3Protocol) {
+                    try {
+                        out.add(REQ_V3.decode(buffer));
+                    } catch (InvalidProtocolBufferException e) {
+                        usingV3Protocol = false;
+                        buffer.resetReaderIndex();
+                        out.add(REQ_PREV3.decode(buffer));
+                    }
+                } else {
                     out.add(REQ_PREV3.decode(buffer));
                 }
             } catch (Exception e) {
@@ -435,10 +443,12 @@ public class BookieProtoEncoding {
     public static class ResponseDecoder extends MessageToMessageDecoder<Object> {
         final EnDecoder REP_PREV3;
         final EnDecoder REP_V3;
+        boolean usingV3Protocol;
 
         ResponseDecoder(ExtensionRegistry extensionRegistry) {
             REP_PREV3 = new ResponseEnDeCoderPreV3(extensionRegistry);
             REP_V3 = new ResponseEnDecoderV3(extensionRegistry);
+            usingV3Protocol = true;
         }
 
         @Override
@@ -452,10 +462,17 @@ public class BookieProtoEncoding {
             ByteBuf buffer = (ByteBuf) msg;
             try {
                 buffer.markReaderIndex();
-                try {
-                    out.add(REP_V3.decode(buffer));
-                } catch (InvalidProtocolBufferException e) {
-                    buffer.resetReaderIndex();
+                
+                if (usingV3Protocol) {
+                    try {
+                        out.add(REP_V3.decode(buffer));
+                    } catch (InvalidProtocolBufferException e) {
+                        usingV3Protocol = false;
+                        buffer.resetReaderIndex();
+                        out.add(REP_PREV3.decode(buffer));
+                    }
+                } else {
+                    // If in the same connection we already got preV3 messages, don't try again to decode V3 messages
                     out.add(REP_PREV3.decode(buffer));
                 }
             } catch (Exception e) {
