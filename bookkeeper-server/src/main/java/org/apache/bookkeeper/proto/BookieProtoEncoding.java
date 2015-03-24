@@ -173,13 +173,12 @@ public class BookieProtoEncoding {
                     packet.readBytes(masterKey, 0, BookieProtocol.MASTER_KEY_LENGTH);
                 }
 
-                ByteBuf bb = packet.duplicate();
-
-                ledgerId = bb.readLong();
-                entryId = bb.readLong();
-                ByteBuf content = packet.slice();
-                content.retain();
-                return new BookieProtocol.AddRequest(version, ledgerId, entryId, flags, masterKey, content);
+                // Read ledger and entry id without advancing the reader index
+                packet.markReaderIndex();
+                ledgerId = packet.readLong();
+                entryId = packet.readLong();
+                packet.resetReaderIndex();
+                return new BookieProtocol.AddRequest(version, ledgerId, entryId, flags, masterKey, packet.retain());
             case BookieProtocol.READENTRY:
                 ledgerId = packet.readLong();
                 entryId = packet.readLong();
