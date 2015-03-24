@@ -99,7 +99,7 @@ public class BookieProtoEncoding {
                 int totalHeaderSize = 4 // for the header
                     + BookieProtocol.MASTER_KEY_LENGTH; // for the master key
                 ByteBuf buf = allocator.buffer(totalHeaderSize);
-                buf.writeInt(new PacketHeader(r.getProtocolVersion(), r.getOpCode(), r.getFlags()).toInt());
+                buf.writeInt(PacketHeader.toInt(r.getProtocolVersion(), r.getOpCode(), r.getFlags()));
                 buf.writeBytes(r.getMasterKey(), 0, BookieProtocol.MASTER_KEY_LENGTH);
                 return new CompositeByteBuf(allocator, false, 2, buf, ar.getData());
             } else if (r instanceof BookieProtocol.ReadRequest) {
@@ -111,7 +111,7 @@ public class BookieProtoEncoding {
                 }
 
                 ByteBuf buf = allocator.buffer(totalHeaderSize);
-                buf.writeInt(new PacketHeader(r.getProtocolVersion(), r.getOpCode(), r.getFlags()).toInt());
+                buf.writeInt(PacketHeader.toInt(r.getProtocolVersion(), r.getOpCode(), r.getFlags()));
                 buf.writeLong(r.getLedgerId());
                 buf.writeLong(r.getEntryId());
                 if (r.hasMasterKey()) {
@@ -124,9 +124,7 @@ public class BookieProtoEncoding {
                 int totalHeaderSize = 4; // for request type
                 int totalSize = totalHeaderSize + am.getSerializedSize();
                 ByteBuf buf = allocator.buffer(totalSize);
-                buf.writeInt(new PacketHeader(r.getProtocolVersion(),
-                                              r.getOpCode(),
-                                              r.getFlags()).toInt());
+                buf.writeInt(PacketHeader.toInt(r.getProtocolVersion(), r.getOpCode(), r.getFlags()));
                 ByteBufOutputStream bufStream = new ByteBufOutputStream(buf);
                 am.writeTo(bufStream);
                 return buf;
@@ -136,9 +134,7 @@ public class BookieProtoEncoding {
                                       + 8; // for entryId
 
                 ByteBuf buf = allocator.buffer(totalHeaderSize);
-                buf.writeInt(new PacketHeader(r.getProtocolVersion(),
-                                              r.getOpCode(),
-                                              r.getFlags()).toInt());
+                buf.writeInt(PacketHeader.toInt(r.getProtocolVersion(), r.getOpCode(), r.getFlags()));
 
                 buf.writeLong(r.getLedgerId());
                 buf.writeLong(r.getEntryId());
@@ -152,17 +148,19 @@ public class BookieProtoEncoding {
         @Override
         public Object decode(ByteBuf packet)
                 throws Exception {
-            PacketHeader h = PacketHeader.fromInt(packet.readInt());
+            int packetHeader = packet.readInt();
+            byte version = PacketHeader.getVersion(packetHeader);
+            byte opCode = PacketHeader.getOpCode(packetHeader);
+            short flags = PacketHeader.getFlags(packetHeader);
 
             // packet format is different between ADDENTRY and READENTRY
             long ledgerId = -1;
             long entryId = BookieProtocol.INVALID_ENTRY_ID;
             byte[] masterKey = null;
-            short flags = h.getFlags();
 
             ServerStats.getInstance().incrementPacketsReceived();
 
-            switch (h.getOpCode()) {
+            switch (opCode) {
             case BookieProtocol.ADDENTRY:
                 // first read master key, if master key is composed only of 0s, we'll avoid to allocated and copy it
                 if (packet.forEachByte(packet.readerIndex(), BookieProtocol.MASTER_KEY_LENGTH, zeroByteFinder) == -1) {
@@ -181,28 +179,27 @@ public class BookieProtoEncoding {
                 entryId = bb.readLong();
                 ByteBuf content = packet.slice();
                 content.retain();
-                return new BookieProtocol.AddRequest(h.getVersion(), ledgerId, entryId, flags, masterKey, content);
+                return new BookieProtocol.AddRequest(version, ledgerId, entryId, flags, masterKey, content);
             case BookieProtocol.READENTRY:
                 ledgerId = packet.readLong();
                 entryId = packet.readLong();
 
-                if ((flags & BookieProtocol.FLAG_DO_FENCING) == BookieProtocol.FLAG_DO_FENCING
-                    && h.getVersion() >= 2) {
+                if ((flags & BookieProtocol.FLAG_DO_FENCING) == BookieProtocol.FLAG_DO_FENCING && version >= 2) {
                     masterKey = new byte[BookieProtocol.MASTER_KEY_LENGTH];
                     packet.readBytes(masterKey, 0, BookieProtocol.MASTER_KEY_LENGTH);
-                    return new BookieProtocol.ReadRequest(h.getVersion(), ledgerId, entryId, flags, masterKey);
+                    return new BookieProtocol.ReadRequest(version, ledgerId, entryId, flags, masterKey);
                 } else {
-                    return new BookieProtocol.ReadRequest(h.getVersion(), ledgerId, entryId, flags);
+                    return new BookieProtocol.ReadRequest(version, ledgerId, entryId, flags);
                 }
             case BookieProtocol.AUTH:
                 BookkeeperProtocol.AuthMessage.Builder builder
                     = BookkeeperProtocol.AuthMessage.newBuilder();
                 builder.mergeFrom(new ByteBufInputStream(packet), extensionRegistry);
-                return new BookieProtocol.AuthRequest(h.getVersion(), builder.build());
+                return new BookieProtocol.AuthRequest(version, builder.build());
             case BookieProtocol.TRIM:
                 ledgerId = packet.readLong();
                 entryId = packet.readLong();
-                return new BookieProtocol.TrimRequest(h.getVersion(), ledgerId, entryId);
+                return new BookieProtocol.TrimRequest(version, ledgerId, entryId);
             }
 
             return packet;
@@ -224,8 +221,7 @@ public class BookieProtoEncoding {
             }
             BookieProtocol.Response r = (BookieProtocol.Response)msg;
             ByteBuf buf = allocator.buffer(24);
-            buf.writeInt(new PacketHeader(r.getProtocolVersion(),
-                                          r.getOpCode(), (short)0).toInt());
+            buf.writeInt(PacketHeader.toInt(r.getProtocolVersion(), r.getOpCode(), (short) 0));
 
             ServerStats.getInstance().incrementPacketsSent();
             if (msg instanceof BookieProtocol.ReadResponse) {
@@ -258,16 +254,17 @@ public class BookieProtoEncoding {
                 throws Exception {
             int rc;
             long ledgerId, entryId;
-            final PacketHeader header;
 
-            header = PacketHeader.fromInt(buffer.readInt());
+            int packetHeader = buffer.readInt();
+            byte version = PacketHeader.getVersion(packetHeader);
+            byte opCode = PacketHeader.getOpCode(packetHeader);
 
-            switch (header.getOpCode()) {
+            switch (opCode) {
             case BookieProtocol.ADDENTRY:
                 rc = buffer.readInt();
                 ledgerId = buffer.readLong();
                 entryId = buffer.readLong();
-                return new BookieProtocol.AddResponse(header.getVersion(), rc, ledgerId, entryId);
+                return new BookieProtocol.AddResponse(version, rc, ledgerId, entryId);
             case BookieProtocol.READENTRY:
                 rc = buffer.readInt();
                 ledgerId = buffer.readLong();
@@ -275,11 +272,9 @@ public class BookieProtoEncoding {
 
                 if (rc == BookieProtocol.EOK) {
                     ByteBuf content = buffer.slice();
-                    return new BookieProtocol.ReadResponse(header.getVersion(), rc,
-                                                           ledgerId, entryId, content.retain());
+                    return new BookieProtocol.ReadResponse(version, rc, ledgerId, entryId, content.retain());
                 } else {
-                    return new BookieProtocol.ReadResponse(header.getVersion(), rc,
-                                                           ledgerId, entryId);
+                    return new BookieProtocol.ReadResponse(version, rc, ledgerId, entryId);
                 }
             case BookieProtocol.AUTH:
                 ByteBufInputStream bufStream = new ByteBufInputStream(buffer);
@@ -287,7 +282,7 @@ public class BookieProtoEncoding {
                     = BookkeeperProtocol.AuthMessage.newBuilder();
                 builder.mergeFrom(bufStream, extensionRegistry);
                 BookkeeperProtocol.AuthMessage am = builder.build();
-                return new BookieProtocol.AuthResponse(header.getVersion(), am);
+                return new BookieProtocol.AuthResponse(version, am);
             default:
                 return buffer;
             }
