@@ -22,6 +22,7 @@ package org.apache.bookkeeper.client;
 
 import static com.google.common.base.Charsets.UTF_8;
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 
 import java.security.GeneralSecurityException;
 import java.util.ArrayList;
@@ -529,8 +530,21 @@ public class LedgerHandle {
      */
     public void asyncAddEntry(final byte[] data, final int offset, final int length,
                               final AddCallback cb, final Object ctx) {
+        if (offset < 0 || length < 0
+                || (offset + length) > data.length) {
+            throw new ArrayIndexOutOfBoundsException(
+                    "Invalid values for offset("+offset
+                    +") or length("+length+")");
+        }
+
         PendingAddOp op = new PendingAddOp(LedgerHandle.this, cb, ctx);
-        doAsyncAddEntry(op, data, offset, length, cb, ctx);
+        doAsyncAddEntry(op, Unpooled.wrappedBuffer(data, offset, length), cb, ctx);
+    }
+
+    public void asyncAddEntry(ByteBuf data, final AddCallback cb, final Object ctx) {
+        data.retain();
+        PendingAddOp op = new PendingAddOp(LedgerHandle.this, cb, ctx);
+        doAsyncAddEntry(op, data, cb, ctx);
     }
 
     /**
@@ -545,18 +559,10 @@ public class LedgerHandle {
     void asyncRecoveryAddEntry(final byte[] data, final int offset, final int length,
                                final AddCallback cb, final Object ctx) {
         PendingAddOp op = new PendingAddOp(LedgerHandle.this, cb, ctx).enableRecoveryAdd();
-        doAsyncAddEntry(op, data, offset, length, cb, ctx);
+        doAsyncAddEntry(op, Unpooled.wrappedBuffer(data, offset, length), cb, ctx);
     }
 
-    private void doAsyncAddEntry(final PendingAddOp op, final byte[] data, final int offset, final int length,
-                                 final AddCallback cb, final Object ctx) {
-        if (offset < 0 || length < 0
-                || (offset + length) > data.length) {
-            throw new ArrayIndexOutOfBoundsException(
-                "Invalid values for offset("+offset
-                +") or length("+length+")");
-        }
-
+    private void doAsyncAddEntry(final PendingAddOp op, final ByteBuf data, final AddCallback cb, final Object ctx) {
         if (throttler != null) {
             throttler.acquire();
         }
@@ -574,7 +580,7 @@ public class LedgerHandle {
                 currentLength = 0;
             } else {
                 entryId = ++lastAddPushed;
-                currentLength = addToLength(length);
+                currentLength = addToLength(data.readableBytes());
                 op.setEntryId(entryId);
                 pendingAddOps.add(op);
             }
@@ -607,8 +613,8 @@ public class LedgerHandle {
                 @Override
                 public void safeRun() {
                     ByteBuf toSend = macManager.computeDigestAndPackageForSending(entryId, lastAddConfirmed,
-                            currentLength, data, offset, length);
-                    op.initiate(toSend, length);
+                            currentLength, data);
+                    op.initiate(toSend, data.readableBytes());
                     toSend.release();
                 }
             });

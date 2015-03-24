@@ -19,7 +19,6 @@ package org.apache.bookkeeper.client;
  */
 
 import io.netty.buffer.ByteBuf;
-import io.netty.buffer.ByteBufInputStream;
 import io.netty.buffer.CompositeByteBuf;
 import io.netty.buffer.PooledByteBufAllocator;
 import io.netty.buffer.Unpooled;
@@ -82,20 +81,18 @@ abstract class DigestManager {
      * @return
      */
 
-    public ByteBuf computeDigestAndPackageForSending(long entryId, long lastAddConfirmed, long length, byte[] data, int doffset, int dlength) {
+    public ByteBuf computeDigestAndPackageForSending(long entryId, long lastAddConfirmed, long length, ByteBuf data) {
         ByteBuf headersBuffer = PooledByteBufAllocator.DEFAULT.buffer(METADATA_LENGTH + macCodeLength);
         headersBuffer.writeLong(ledgerId);
         headersBuffer.writeLong(entryId);
         headersBuffer.writeLong(lastAddConfirmed);
         headersBuffer.writeLong(length);
         
-        ByteBuf dataBuffer = Unpooled.wrappedBuffer(data, doffset, dlength);
-
         update(headersBuffer);
-        update(dataBuffer);
+        update(data);
         getValueAndReset(headersBuffer);
 
-        return new CompositeByteBuf(PooledByteBufAllocator.DEFAULT, false, 2, headersBuffer, dataBuffer);
+        return new CompositeByteBuf(PooledByteBufAllocator.DEFAULT, true, 2, headersBuffer, data);
     }
 
     private void verifyDigest(ByteBuf dataReceived) throws BKDigestMatchException {
@@ -158,11 +155,11 @@ abstract class DigestManager {
      * @return
      * @throws BKDigestMatchException
      */
-    ByteBufInputStream verifyDigestAndReturnData(long entryId, ByteBuf dataReceived)
+    ByteBuf verifyDigestAndReturnData(long entryId, ByteBuf dataReceived)
             throws BKDigestMatchException {
         verifyDigest(entryId, dataReceived);
         dataReceived.readerIndex(METADATA_LENGTH + macCodeLength);
-        return new ByteBufInputStream(dataReceived);
+        return dataReceived;
     }
 
     static class RecoveryData {
