@@ -357,15 +357,14 @@ public class DbLedgerStorage implements CompactableLedgerStorage {
         try {
             LedgerIndexPage ledgerIndexPage = entryLocationIndex.getLedgerIndexPage(ledgerId, entryId);
             long entryLocation = ledgerIndexPage.getPosition(entryId);
-            byte[] content = entryLogger.readEntry(ledgerId, entryId, entryLocation);
+            ByteBuf content = entryLogger.readEntry(ledgerId, entryId, entryLocation);
 
             // Try to read more entries
             fillReadAheadCache(ledgerIndexPage, ledgerId, entryId + 1);
 
             recordSuccessfulEvent(readCacheMissStats, startTime);
             recordSuccessfulEvent(readEntryStats, startTime);
-
-            return Unpooled.wrappedBuffer(content);
+            return content;
         } catch (NoEntryException e) {
             recordFailedEvent(readEntryStats, startTime);
 
@@ -402,12 +401,13 @@ public class DbLedgerStorage implements CompactableLedgerStorage {
                     continue;
                 }
 
-                byte[] content = entryLogger.readEntry(ledgerId, entryId, entryLocation);
+                ByteBuf content = entryLogger.readEntry(ledgerId, entryId, entryLocation);
 
-                readCache.put(ledgerId, entryId, Unpooled.wrappedBuffer(content));
+                readCache.put(ledgerId, entryId, content);
                 entryId++;
                 count++;
-                size += content.length;
+                size += content.readableBytes();
+                content.release();
             }
 
             readAheadBatchCountStats.registerSuccessfulValue(count);
@@ -463,11 +463,11 @@ public class DbLedgerStorage implements CompactableLedgerStorage {
         log.debug("Found last entry for ledger {} in db: {}", ledgerId, lastEntryId);
 
         long entryLocation = entryLocationIndex.getLocation(ledgerId, lastEntryId);
-        byte[] content = entryLogger.readEntry(ledgerId, lastEntryId, entryLocation);
+        ByteBuf content = entryLogger.readEntry(ledgerId, lastEntryId, entryLocation);
 
         recordSuccessfulEvent(readCacheMissStats, startTime);
         recordSuccessfulEvent(readEntryStats, startTime);
-        return Unpooled.wrappedBuffer(content);
+        return content;
     }
 
     @VisibleForTesting
