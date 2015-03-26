@@ -248,31 +248,43 @@ class AuthHandler {
 
         @Override
         public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
-            synchronized (waitingForAuth) {
-                if (authenticated) {
+            if (authenticated) {
+                super.write(ctx, msg, promise);
+            } else if (msg instanceof BookkeeperProtocol.Request) {
+                // let auth messages through, queue the rest
+                BookkeeperProtocol.Request req = (BookkeeperProtocol.Request) msg;
+                if (req.getHeader().getOperation() == BookkeeperProtocol.OperationType.AUTH) {
                     super.write(ctx, msg, promise);
-                } else if (msg instanceof BookkeeperProtocol.Request) {
-                    // let auth messages through, queue the rest
-                    BookkeeperProtocol.Request req = (BookkeeperProtocol.Request) msg;
-                    if (req.getHeader().getOperation()
-                            == BookkeeperProtocol.OperationType.AUTH) {
-                        super.write(ctx, msg, promise);
-                    } else {
-                        waitingForAuth.add(msg);
-                    }
-                } else if (msg instanceof BookieProtocol.Request) {
-                    // let auth messages through, queue the rest
-                    BookieProtocol.Request req = (BookieProtocol.Request) msg;
-                    if (req.opCode == BookkeeperProtocol.OperationType.AUTH.getNumber()) {
-                        super.write(ctx, msg, promise);
-                    } else {
-                        waitingForAuth.add(msg);
-                    }
                 } else {
-                    // else just drop
-                    promise.setFailure(null);
+                    synchronized (waitingForAuth) {
+                        if (authenticated) {
+                            // State might have changed 
+                            super.write(ctx, msg, promise);
+                        } else {
+                            waitingForAuth.add(msg);
+                        }
+                    }
                 }
+            } else if (msg instanceof BookieProtocol.Request) {
+                // let auth messages through, queue the rest
+                BookieProtocol.Request req = (BookieProtocol.Request) msg;
+                if (req.opCode == BookkeeperProtocol.OperationType.AUTH.getNumber()) {
+                    super.write(ctx, msg, promise);
+                } else {
+                    synchronized (waitingForAuth) {
+                        if (authenticated) {
+                            // State might have changed 
+                            super.write(ctx, msg, promise);
+                        } else {
+                            waitingForAuth.add(msg);
+                        }
+                    }
+                }
+            } else {
+                // else just drop
+                promise.setFailure(null);
             }
+
         }
 
         long newTxnId() {
