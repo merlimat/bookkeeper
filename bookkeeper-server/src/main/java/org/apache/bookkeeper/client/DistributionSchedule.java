@@ -17,7 +17,7 @@
  */
 package org.apache.bookkeeper.client;
 
-import java.util.List;
+import com.carrotsearch.hppc.IntArrayList;
 /**
  * This interface determins how entries are distributed among bookies.
  *
@@ -33,7 +33,7 @@ interface DistributionSchedule {
     /**
      * return the set of bookie indices to send the message to
      */
-    public List<Integer> getWriteSet(long entryId);
+    public IntArrayList getWriteSet(long entryId);
 
     /**
      * An ack set represents the set of bookies from which
@@ -52,6 +52,11 @@ interface DistributionSchedule {
          * Used for reissuing write requests.
          */
         public void removeBookie(int bookie);
+
+        /**
+         * Recycle this ack set when not used anymore
+         */
+        public void recycle();
     }
 
     /**

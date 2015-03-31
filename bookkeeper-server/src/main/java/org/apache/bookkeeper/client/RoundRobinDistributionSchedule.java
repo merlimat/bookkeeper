@@ -17,11 +17,12 @@
  */
 package org.apache.bookkeeper.client;
 
-import org.apache.bookkeeper.util.MathUtils;
+import com.carrotsearch.hppc.IntArrayList;
+import com.carrotsearch.hppc.IntHashSet;
+import com.google.common.base.Objects;
 
-import java.util.List;
-import java.util.ArrayList;
-import java.util.HashSet;
+import io.netty.util.Recycler;
+import io.netty.util.Recycler.Handle;
 
 /**
  * A specific {@link DistributionSchedule} that places entries in round-robin
@@ -31,39 +32,79 @@ import java.util.HashSet;
  *
  */
 class RoundRobinDistributionSchedule implements DistributionSchedule {
-    private int writeQuorumSize;
-    private int ackQuorumSize;
-    private int ensembleSize;
+    private final int writeQuorumSize;
+    private final int ackQuorumSize;
+    private final int ensembleSize;
 
+    private final IntArrayList[] writeSets;
 
     public RoundRobinDistributionSchedule(int writeQuorumSize, int ackQuorumSize, int ensembleSize) {
         this.writeQuorumSize = writeQuorumSize;
         this.ackQuorumSize = ackQuorumSize;
         this.ensembleSize = ensembleSize;
+        
+        // Pre-compute possible write sets
+        writeSets = new IntArrayList[ensembleSize];
+        for (int i = 0; i < ensembleSize; i++) {
+            writeSets[i] = new IntArrayList(writeQuorumSize);
+            for (int w = 0; w < this.writeQuorumSize; w++) {
+                writeSets[i].add((i + w) % ensembleSize);
+            }
+        }
     }
 
     @Override
-    public List<Integer> getWriteSet(long entryId) {
-        List<Integer> set = new ArrayList<Integer>();
-        for (int i = 0; i < this.writeQuorumSize; i++) {
-            set.add((int)((entryId + i) % ensembleSize));
-        }
-        return set;
+    public IntArrayList getWriteSet(long entryId) {
+        return writeSets[(int) (entryId % ensembleSize)];
     }
 
     @Override
     public AckSet getAckSet() {
-        final HashSet<Integer> ackSet = new HashSet<Integer>();
-        return new AckSet() {
-            public boolean addBookieAndCheck(int bookieIndexHeardFrom) {
-                ackSet.add(bookieIndexHeardFrom);
-                return ackSet.size() >= ackQuorumSize;
-            }
+        return AckSetImpl.create(ackQuorumSize);
+    }
 
-            public void removeBookie(int bookie) {
-                ackSet.remove(bookie);
+    private static class AckSetImpl implements AckSet {
+        private int ackQuorumSize;
+        private IntHashSet set = new IntHashSet();
+
+        private final Handle recyclerHandle;
+        private static final Recycler<AckSetImpl> RECYCLER = new Recycler<AckSetImpl>() {
+            protected AckSetImpl newObject(Recycler.Handle handle) {
+                return new AckSetImpl(handle);
             }
         };
+
+        private AckSetImpl(Handle recyclerHandle) {
+            this.recyclerHandle = recyclerHandle;
+        }
+
+        static AckSetImpl create(int ackQuorumSize) {
+            AckSetImpl ackSet = RECYCLER.get();
+            ackSet.ackQuorumSize = ackQuorumSize;
+            ackSet.set.clear();
+            return ackSet;
+        }
+
+        @Override
+        public boolean addBookieAndCheck(int bookieIndexHeardFrom) {
+            set.add(bookieIndexHeardFrom);
+            return set.size() >= ackQuorumSize;
+        }
+
+        @Override
+        public void removeBookie(int bookie) {
+            set.removeAll(bookie);
+        }
+
+        @Override
+        public void recycle() {
+            RECYCLER.recycle(this, recyclerHandle);
+        }
+
+        @Override
+        public String toString() {
+            return Objects.toStringHelper(this).add("ackQuorumSize", ackQuorumSize).add("set", set).toString();
+        }
     }
 
     private class RRQuorumCoverageSet implements QuorumCoverageSet {

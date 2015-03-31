@@ -20,8 +20,6 @@ package org.apache.bookkeeper.client;
 import io.netty.buffer.ByteBuf;
 import io.netty.util.ReferenceCountUtil;
 
-import java.util.HashSet;
-import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.bookkeeper.client.AsyncCallback.AddCallback;
@@ -33,6 +31,10 @@ import org.apache.bookkeeper.util.MathUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.carrotsearch.hppc.IntArrayList;
+import com.carrotsearch.hppc.IntHashSet;
+import com.carrotsearch.hppc.procedures.IntProcedure;
+
 /**
  * This represents a pending add operation. When it has got success from all
  * bookies, it sees if its at the head of the pending adds queue, and if yes,
@@ -42,7 +44,7 @@ import org.slf4j.LoggerFactory;
  *
  *
  */
-class PendingAddOp implements WriteCallback {
+class PendingAddOp implements WriteCallback, IntProcedure {
     private final static Logger LOG = LoggerFactory.getLogger(PendingAddOp.class);
 
     ByteBuf toSend;
@@ -50,7 +52,7 @@ class PendingAddOp implements WriteCallback {
     Object ctx;
     long entryId;
     int entryLength;
-    Set<Integer> writeSet;
+    IntHashSet writeSet;
 
     DistributionSchedule.AckSet ackSet;
     boolean completed = false;
@@ -66,6 +68,7 @@ class PendingAddOp implements WriteCallback {
         this.ctx = ctx;
         this.entryId = LedgerHandle.INVALID_ENTRY_ID;
 
+        writeSet = new IntHashSet();
         ackSet = lh.distributionSchedule.getAckSet();
 
         addOpLogger = lh.bk.getAddOpLogger();
@@ -82,7 +85,12 @@ class PendingAddOp implements WriteCallback {
 
     void setEntryId(long entryId) {
         this.entryId = entryId;
-        writeSet = new HashSet<Integer>(lh.distributionSchedule.getWriteSet(entryId));
+
+        IntArrayList ws = lh.distributionSchedule.getWriteSet(entryId);
+        this.writeSet.clear();
+        for (int i = 0; i < ws.size(); i++) {
+            this.writeSet.add(ws.get(i));
+        }
     }
 
     void sendWriteRequest(int bookieIndex) {
@@ -138,9 +146,17 @@ class PendingAddOp implements WriteCallback {
         // Retain the buffer until all writes are complete
         this.toSend.retain();
         this.entryLength = entryLength;
-        for (int bookieIndex : writeSet) {
-            sendWriteRequest(bookieIndex);
-        }
+
+        // Iterate over set and trigger the sendWriteRequests
+        writeSet.forEach(this);
+    }
+
+    /** Called when iterating over writeSet. Trick to avoid creating 
+     * an iterator over the set
+     */
+    @Override
+    public void apply(int bookieIndex) {
+        sendWriteRequest(bookieIndex);
     }
 
     @Override
@@ -186,6 +202,7 @@ class PendingAddOp implements WriteCallback {
 
         if (ackSet.addBookieAndCheck(bookieIndex) && !completed) {
             completed = true;
+            ackSet.recycle();
 
             if (LOG.isDebugEnabled()) {
                 LOG.debug("Complete (lid:{}, eid:{}).", ledgerId, entryId);
