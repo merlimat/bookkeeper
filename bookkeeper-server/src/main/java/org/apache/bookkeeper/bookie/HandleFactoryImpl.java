@@ -37,19 +37,23 @@ class HandleFactoryImpl implements HandleFactory {
 
     HandleFactoryImpl(LedgerStorage ledgerStorage) {
         this.ledgerStorage = ledgerStorage;
-        this.ledgers = CacheBuilder.newBuilder().expireAfterAccess(1, TimeUnit.DAYS).build();
-        this.readOnlyLedgers = CacheBuilder.newBuilder().expireAfterAccess(1, TimeUnit.DAYS).build();
+        this.ledgers = CacheBuilder.newBuilder().expireAfterWrite(1, TimeUnit.DAYS).build();
+        this.readOnlyLedgers = CacheBuilder.newBuilder().expireAfterWrite(1, TimeUnit.DAYS).build();
     }
 
     @Override
     public LedgerDescriptor getHandle(final long ledgerId, final byte[] masterKey) throws IOException, BookieException {
         try {
-            LedgerDescriptor handle = ledgers.get(ledgerId, new Callable<LedgerDescriptor>() {
-                @Override
-                public LedgerDescriptor call() throws Exception {
-                    return LedgerDescriptor.create(masterKey, ledgerId, ledgerStorage);
-                }
-            });
+            LedgerDescriptor handle = ledgers.getIfPresent(ledgerId);
+
+            if (handle == null) {
+                handle = ledgers.get(ledgerId, new Callable<LedgerDescriptor>() {
+                    @Override
+                    public LedgerDescriptor call() throws Exception {
+                        return LedgerDescriptor.create(masterKey, ledgerId, ledgerStorage);
+                    }
+                });
+            }
 
             handle.checkAccess(masterKey);
             return handle;
@@ -65,6 +69,11 @@ class HandleFactoryImpl implements HandleFactory {
     @Override
     public LedgerDescriptor getReadOnlyHandle(final long ledgerId) throws IOException, Bookie.NoLedgerException {
         try {
+            LedgerDescriptor handle = ledgers.getIfPresent(ledgerId);
+            if (handle != null) {
+                return handle;
+            }
+
             return readOnlyLedgers.get(ledgerId, new Callable<LedgerDescriptor>() {
                 @Override
                 public LedgerDescriptor call() throws Exception {
