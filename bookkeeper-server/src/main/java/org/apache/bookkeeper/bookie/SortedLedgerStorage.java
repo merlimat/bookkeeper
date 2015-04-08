@@ -53,7 +53,7 @@ public class SortedLedgerStorage extends InterleavedLedgerStorage
                            CheckpointSource checkpointSource, StatsLogger statsLogger)
             throws IOException {
         super.initialize(conf, ledgerManagerProv, ledgerDirsManager,
-                         indexDirsManager, null, statsLogger);
+                         indexDirsManager, checkpointSource, statsLogger);
         this.memTable = new EntryMemTable(conf, checkpointSource, statsLogger);
         this.scheduler = Executors.newSingleThreadScheduledExecutor(
                 new ThreadFactoryBuilder()

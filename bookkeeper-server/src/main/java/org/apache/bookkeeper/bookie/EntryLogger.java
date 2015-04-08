@@ -38,9 +38,11 @@ import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentHashMap;
@@ -73,13 +75,24 @@ public class EntryLogger {
 
     private static class BufferedLogChannel extends BufferedChannel {
         final private long logId;
+        private final EntryLogMetadata entryLogMetada;
+
         public BufferedLogChannel(FileChannel fc, int writeCapacity,
                                   int readCapacity, long logId) throws IOException {
             super(fc, writeCapacity, readCapacity);
             this.logId = logId;
+            this.entryLogMetada = new EntryLogMetadata(logId);
         }
         public long getLogId() {
             return logId;
+        }
+
+        public void registerWrittenEntry(long ledgerId, long entrySize) {
+            entryLogMetada.addLedgerSize(ledgerId, entrySize);
+        }
+
+        public Map<Long, Long> getLedgersMap() {
+            return entryLogMetada.getLedgersMap();
         }
     }
 
@@ -100,13 +113,68 @@ public class EntryLogger {
     private final CopyOnWriteArrayList<EntryLogListener> listeners
         = new CopyOnWriteArrayList<EntryLogListener>();
 
+    private enum HeaderVersion {
+        V0(0), // Old log file format (no index)
+        V1(1), // New format, contains ledger map index
+
+        Unknown(-1); // Unrecognized header version
+
+        final int value;
+
+        private HeaderVersion(int value) {
+            this.value = value;
+        }
+    }
+
+    private static class Header {
+        final HeaderVersion version;
+        final long ledgersMapOffset;
+        final int ledgersCount;
+
+        Header(HeaderVersion version, long ledgersMapOffset, int ledgersCount) {
+            this.version = version;
+            this.ledgersMapOffset = ledgersMapOffset;
+            this.ledgersCount = ledgersCount;
+        }
+    }
+
     /**
      * The 1K block at the head of the entry logger file
-     * that contains the fingerprint and (future) meta-data
+     * that contains the fingerprint and meta-data.
+     *
+     * Header is composed of:
+     * Fingerprint: 4 bytes "BKLO"
+     * Log file HeaderVersion enum: 4 bytes
+     * Ledger map offset: 8 bytes
+     * Ledgers Count: 4 bytes
      */
     final static int LOGFILE_HEADER_SIZE = 1024;
     final ByteBuffer LOGFILE_HEADER = ByteBuffer.allocate(LOGFILE_HEADER_SIZE);
+
+    final static int HEADER_VERSION_POSITION = 4;
+    final static int LEDGERS_MAP_OFFSET_POSITION = HEADER_VERSION_POSITION + 4;
+
+    /**
+     * Ledgers map is composed of multiple parts that can be split into separated entries. Each of them is composed of:
+     *
+     * <pre>
+     * length: (4 bytes) [0-3]
+     * ledger id (-1): (8 bytes) [4 - 11]
+     * entry id: (8 bytes) [12-19]
+     * num ledgers stored in current metadata entry: (4 bytes) [20 - 23]
+     * ledger entries: sequence of (ledgerid, size) (8 + 8 bytes each) [24..]
+     * </pre>
+     */
+    final static int LEDGERS_MAP_HEADER_SIZE = 4 + 8 + 8 + 4;
+    final static int LEDGERS_MAP_ENTRY_SIZE = 8 + 8;
+
+    // Break the ledgers map into multiple batches, each of which can contain up to 10K ledgers
+    final static int LEDGERS_MAP_MAX_BATCH_SIZE = 10000;
+
     final static long INVALID_LID = -1L;
+
+    // EntryId used to mark an entry (belonging to INVALID_ID) as a component of the serialized ledgers map
+    final static long LEDGERS_MAP_ENTRY_ID = -2L;
 
     final static int MIN_SANE_ENTRY_SIZE = 8 + 8;
     final static int MAX_SANE_ENTRY_SIZE = PerChannelBookieClient.MAX_FRAME_LENGTH;
@@ -177,6 +245,7 @@ public class EntryLogger {
         // so there can be race conditions when entry logs are rolled over and
         // this header buffer is cleared before writing it into the new logChannel.
         LOGFILE_HEADER.put("BKLO".getBytes(UTF_8));
+        LOGFILE_HEADER.putInt(HeaderVersion.V1.value);
 
         // Find the largest logId
         long logId = INVALID_LID;
@@ -370,9 +439,14 @@ public class EntryLogger {
             if (null == logChannelsToFlush) {
                 logChannelsToFlush = new LinkedList<BufferedLogChannel>();
             }
+
             // flush the internal buffer back to filesystem but not sync disk
             // so the readers could access the data from filesystem.
             logChannel.flush(false);
+
+            // Append ledgers map at the end of entry log
+            appendLedgersMap(logChannel);
+
             BufferedLogChannel newLogChannel = entryLoggerAllocator.createNewLog();
             logChannelsToFlush.add(logChannel);
             LOG.info("Flushing entry logger {} back to filesystem, pending for syncing entry loggers : {}.",
@@ -384,6 +458,55 @@ public class EntryLogger {
         } else {
             logChannel = entryLoggerAllocator.createNewLog();
         }
+    }
+
+    /**
+     * Append the ledger map at the end of the entry log.
+     * Updates the entry log file header with the offset and size of the map.
+     */
+    private void appendLedgersMap(BufferedLogChannel entryLogChannel) throws IOException {
+        long ledgerMapOffset = entryLogChannel.position();
+
+        Map<Long, Long> ledgersMap = entryLogChannel.getLedgersMap();
+
+        Iterator<Entry<Long, Long>> iterator = ledgersMap.entrySet().iterator();
+        int numberOfLedgers = ledgersMap.size();
+        int remainingLedgers = numberOfLedgers;
+
+        // Write the ledgers map into several batches
+        while (iterator.hasNext()) {
+            // Start new batch
+            int batchSize = Math.min(remainingLedgers, LEDGERS_MAP_MAX_BATCH_SIZE);
+            int ledgerMapSize = LEDGERS_MAP_HEADER_SIZE + LEDGERS_MAP_ENTRY_SIZE * batchSize;
+            ByteBuffer serializedMap = ByteBuffer.allocate(ledgerMapSize);
+
+            serializedMap.putInt(ledgerMapSize - 4);
+            serializedMap.putLong(INVALID_LID);
+            serializedMap.putLong(LEDGERS_MAP_ENTRY_ID);
+            serializedMap.putInt(batchSize);
+
+            // Dump all ledgers for this batch
+            for (int i = 0; i < batchSize; i++) {
+                Entry<Long, Long> entry = iterator.next();
+                long ledgerId = entry.getKey();
+                long size = entry.getValue();
+
+                serializedMap.putLong(ledgerId);
+                serializedMap.putLong(size);
+                --remainingLedgers;
+            }
+
+            // Close current batch
+            serializedMap.flip();
+            entryLogChannel.fileChannel.write(serializedMap);
+        }
+
+        // Update the headers with the map offset and count of ledgers
+        ByteBuffer mapInfo = ByteBuffer.allocate(8 + 4);
+        mapInfo.putLong(ledgerMapOffset);
+        mapInfo.putInt(numberOfLedgers);
+        mapInfo.flip();
+        entryLogChannel.fileChannel.write(mapInfo, LEDGERS_MAP_OFFSET_POSITION);
     }
 
     /**
@@ -622,12 +745,13 @@ public class EntryLogger {
         return addEntry(ledger, entry, true);
     }
 
-    public synchronized long addEntry(long ledger, ByteBuffer entry, boolean rollLog)
-            throws IOException {
+    public synchronized long addEntry(long ledger, ByteBuffer entry, boolean rollLog) throws IOException {
+        int entrySize = entry.remaining() + 4; // Adding 4 bytes to prepend the size
+
         if (rollLog) {
             // Create new log if logSizeLimit reached or current disk is full
             boolean createNewLog = shouldCreateNewEntryLog.get();
-            if (createNewLog || reachEntryLogLimit(entry.remaining() + 4)) {
+            if (createNewLog || reachEntryLogLimit(entrySize)) {
                 createNewLog();
                 // Reset the flag
                 if (createNewLog) {
@@ -635,12 +759,14 @@ public class EntryLogger {
                 }
             }
         }
+
         ByteBuffer buff = ByteBuffer.allocate(4);
         buff.putInt(entry.remaining());
         buff.flip();
         logChannel.write(buff);
         long pos = logChannel.position();
         logChannel.write(entry);
+        logChannel.registerWrittenEntry(ledger, entrySize);
 
         return (logChannel.getLogId() << 32L) | pos;
     }
@@ -710,6 +836,40 @@ public class EntryLogger {
         return data;
     }
 
+    /**
+     * Read the header of an entry log
+     */
+    private Header getHeaderForLogId(long entryLogId) throws IOException {
+        BufferedReadChannel bc = getChannelForLogId(entryLogId);
+
+        // Allocate buffer to read (version, ledgersMapOffset, ledgerCount)
+        ByteBuffer headers = ByteBuffer.allocate(LOGFILE_HEADER_SIZE);
+        bc.read(headers, 0);
+        headers.flip();
+
+        // Skip marker string "BKLO"
+        headers.getInt();
+
+        int version = headers.getInt();
+        HeaderVersion headerVersion;
+        switch (version) {
+        case 0:
+            headerVersion = HeaderVersion.V0;
+            break;
+        case 1:
+            headerVersion = HeaderVersion.V1;
+            break;
+        default:
+            LOG.debug("Unknown entry log header version for log {}: {}", entryLogId, version);
+            headerVersion = HeaderVersion.Unknown;
+            break;
+        }
+
+        long ledgersMapOffset = headers.getLong();
+        int ledgersCount = headers.getInt();
+        return new Header(headerVersion, ledgersMapOffset, ledgersCount);
+    }
+
     private BufferedReadChannel getChannelForLogId(long entryLogId) throws IOException {
         BufferedReadChannel fc = getFromChannels(entryLogId);
         if (fc != null) {
@@ -777,6 +937,7 @@ public class EntryLogger {
         // Start the read position in the current entry log file to be after
         // the header where all of the ledger entries are.
         long pos = LOGFILE_HEADER_SIZE;
+
         // Read through the entry log file and extract the ledger ID's.
         while (true) {
             // Check if we've finished reading the entry log file.
@@ -801,7 +962,7 @@ public class EntryLogger {
             lidBuff.flip();
             long lid = lidBuff.getLong();
             lidBuff.clear();
-            if (!scanner.accept(lid)) {
+            if (lid == INVALID_LID || !scanner.accept(lid)) {
                 // skip this entry
                 pos += entrySize;
                 continue;
@@ -821,6 +982,117 @@ public class EntryLogger {
             // Advance position to the next entry
             pos += entrySize;
         }
+    }
+
+    public EntryLogMetadata getEntryLogMetadata(long entryLogId) throws IOException {
+        // First try to extract the EntryLogMetada from the index, if there's no index then fallback to scanning the
+        // entry log
+        try {
+            return extractEntryLogMetadataFromIndex(entryLogId);
+        } catch (IOException e) {
+            LOG.info("Failed to get ledgers map index from: {}.log : {}", entryLogId, e.getMessage());
+
+            // Fall-back to scanning
+            return extractEntryLogMetadataByScanning(entryLogId);
+        }
+    }
+
+    EntryLogMetadata extractEntryLogMetadataFromIndex(long entryLogId) throws IOException {
+        Header header = getHeaderForLogId(entryLogId);
+
+        if (header.version.value < HeaderVersion.V1.value) {
+            throw new IOException("Old log file header");
+        }
+
+        if (header.ledgersMapOffset == 0L) {
+            // The index was not stored in the log file (possibly because the bookie crashed before flushing it)
+            throw new IOException("No ledgers map index found");
+        }
+
+        if (LOG.isDebugEnabled()) {
+            LOG.debug("Recovering ledgers maps for log {} at offset: {}", entryLogId, header.ledgersMapOffset);
+        }
+
+        BufferedReadChannel bc = getChannelForLogId(entryLogId);
+
+        // There can be multiple entries containing the various components of the serialized ledgers map
+        long offset = header.ledgersMapOffset;
+        EntryLogMetadata meta = new EntryLogMetadata(entryLogId);
+
+        while (offset < bc.size()) {
+            // Read ledgers map size
+            ByteBuffer sizeBuf = ByteBuffer.allocate(4);
+            bc.read(sizeBuf, offset);
+            sizeBuf.flip();
+
+            int ledgersMapSize = sizeBuf.getInt();
+
+            // Read the index into a buffer
+            ByteBuffer ledgersMap = ByteBuffer.allocate(ledgersMapSize);
+            bc.read(ledgersMap, offset + 4);
+            ledgersMap.flip();
+
+            // Discard ledgerId and entryId
+            long lid = ledgersMap.getLong();
+            if (lid != INVALID_LID) {
+                throw new IOException("Cannot deserialize ledgers map from ledger " + lid);
+            }
+
+            long entryId = ledgersMap.getLong();
+            if (entryId != LEDGERS_MAP_ENTRY_ID) {
+                throw new IOException("Cannot deserialize ledgers map from entryId " + entryId);
+            }
+
+            // Read the number of ledgers in the current entry batch
+            int ledgersCount = ledgersMap.getInt();
+
+            // Extract all (ledger,size) tuples from buffer
+            for (int i = 0; i < ledgersCount; i++) {
+                long ledgerId = ledgersMap.getLong();
+                long size = ledgersMap.getLong();
+
+                if (LOG.isDebugEnabled()) {
+                    LOG.debug("Recovering ledgers maps for log {} -- Found ledger: {} with size: {}",
+                            new Object[] { entryLogId, ledgerId, size });
+                }
+                meta.addLedgerSize(ledgerId, size);
+            }
+
+            if (ledgersMap.hasRemaining()) {
+                throw new IOException("Invalid entry size when reading ledgers map");
+            }
+
+            // Move to next entry, if any
+            offset += ledgersMapSize + 4;
+        }
+
+        if (meta.getLedgersMap().size() != header.ledgersCount) {
+            throw new IOException("Not all ledgers were found in ledgers map index. expected: " + header.ledgersCount
+                    + " -- found: " + meta.getLedgersMap().size());
+        }
+
+        return meta;
+    }
+
+    private EntryLogMetadata extractEntryLogMetadataByScanning(long entryLogId) throws IOException {
+        final EntryLogMetadata meta = new EntryLogMetadata(entryLogId);
+
+        // Read through the entry log file and extract the entry log meta
+        scanEntryLog(entryLogId, new EntryLogScanner() {
+            @Override
+            public void process(long ledgerId, long offset, ByteBuffer entry) throws IOException {
+                // add new entry size of a ledger to entry log meta
+                meta.addLedgerSize(ledgerId, entry.limit() + 4);
+            }
+
+            @Override
+            public boolean accept(long ledgerId) {
+                return true;
+            }
+        });
+
+        LOG.debug("Retrieved entry log meta data entryLogId: {}, meta: {}", entryLogId, meta);
+        return meta;
     }
 
     /**

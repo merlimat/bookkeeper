@@ -411,7 +411,7 @@ public class GarbageCollectorThread extends SafeRunnable {
         // Loop through all of the entry logs and remove the non-active ledgers.
         for (Long entryLogId : entryLogMetaMap.keySet()) {
             EntryLogMetadata meta = entryLogMetaMap.get(entryLogId);
-            for (Long entryLogLedger : meta.ledgersMap.keySet()) {
+            for (Long entryLogLedger : meta.getLedgersMap().keySet()) {
                 // Remove the entry log ledger from the set if it isn't active.
                 try {
                     if (!ledgerStorage.ledgerExists(entryLogLedger)) {
@@ -446,8 +446,8 @@ public class GarbageCollectorThread extends SafeRunnable {
         Comparator<EntryLogMetadata> sizeComparator = new Comparator<EntryLogMetadata>() {
             @Override
             public int compare(EntryLogMetadata m1, EntryLogMetadata m2) {
-                long unusedSize1 = m1.totalSize - m1.remainingSize;
-                long unusedSize2 = m2.totalSize - m2.remainingSize;
+                long unusedSize1 = m1.getTotalSize() - m1.getRemainingSize();
+                long unusedSize2 = m2.getTotalSize() - m2.getRemainingSize();
                 if (unusedSize1 > unusedSize2) {
                     return -1;
                 } else if (unusedSize1 < unusedSize2) {
@@ -466,10 +466,13 @@ public class GarbageCollectorThread extends SafeRunnable {
             if (meta.getUsage() >= threshold) {
                 break;
             }
-            LOG.debug("Compacting entry log {} below threshold {}.", meta.entryLogId, threshold);
+
+            if (LOG.isDebugEnabled()) {
+                LOG.debug("Compacting entry log {} below threshold {}.", meta.getEntryLogId(), threshold);
+            }
             try {
                 compactEntryLog(scannerFactory, meta);
-                toRemove.add(meta.entryLogId);
+                toRemove.add(meta.getEntryLogId());
             } catch (LedgerDirsManager.NoWritableLedgerDirException nwlde) {
                 LOG.warn("No writable ledger directory available, aborting compaction", nwlde);
                 break;
@@ -553,94 +556,14 @@ public class GarbageCollectorThread extends SafeRunnable {
             return;
         }
 
-        LOG.info("Compacting entry log : {}", entryLogMeta.entryLogId);
+        LOG.info("Compacting entry log : {}", entryLogMeta.getEntryLogId());
 
         try {
-            entryLogger.scanEntryLog(entryLogMeta.entryLogId,
+            entryLogger.scanEntryLog(entryLogMeta.getEntryLogId(),
                                      scannerFactory.newScanner(entryLogMeta));
         } finally {
             // clear compacting flag
             compacting.set(false);
-        }
-    }
-
-    /**
-     * Records the total size, remaining size and the set of ledgers that comprise a entry log.
-     */
-    static class EntryLogMetadata {
-        long entryLogId;
-        long totalSize;
-        long remainingSize;
-        ConcurrentHashMap<Long, Long> ledgersMap;
-
-        public EntryLogMetadata(long logId) {
-            this.entryLogId = logId;
-
-            totalSize = remainingSize = 0;
-            ledgersMap = new ConcurrentHashMap<Long, Long>();
-        }
-
-        public void addLedgerSize(long ledgerId, long size) {
-            totalSize += size;
-            remainingSize += size;
-            Long ledgerSize = ledgersMap.get(ledgerId);
-            if (null == ledgerSize) {
-                ledgerSize = 0L;
-            }
-            ledgerSize += size;
-            ledgersMap.put(ledgerId, ledgerSize);
-        }
-
-        public void removeLedger(long ledgerId) {
-            Long size = ledgersMap.remove(ledgerId);
-            if (null == size) {
-                return;
-            }
-            remainingSize -= size;
-        }
-
-        public boolean containsLedger(long ledgerId) {
-            return ledgersMap.containsKey(ledgerId);
-        }
-
-        public double getUsage() {
-            if (totalSize == 0L) {
-                return 0.0f;
-            }
-            return (double)remainingSize / totalSize;
-        }
-
-        public boolean isEmpty() {
-            return ledgersMap.isEmpty();
-        }
-
-        @Override
-        public String toString() {
-            StringBuilder sb = new StringBuilder();
-            sb.append("{ totalSize = ").append(totalSize).append(", remainingSize = ")
-              .append(remainingSize).append(", ledgersMap = ").append(ledgersMap).append(" }");
-            return sb.toString();
-        }
-    }
-
-    /**
-     * A scanner used to extract entry log meta from entry log files.
-     */
-    static class ExtractionScanner implements EntryLogScanner {
-        EntryLogMetadata meta;
-
-        public ExtractionScanner(EntryLogMetadata meta) {
-            this.meta = meta;
-        }
-
-        @Override
-        public boolean accept(long ledgerId) {
-            return true;
-        }
-        @Override
-        public void process(long ledgerId, long offset, ByteBuffer entry) {
-            // add new entry size of a ledger to entry log meta
-            meta.addLedgerSize(ledgerId, entry.limit() + 4);
         }
     }
 
@@ -674,7 +597,7 @@ public class GarbageCollectorThread extends SafeRunnable {
 
             try {
                 // Read through the entry log file and extract the entry log meta
-                EntryLogMetadata entryLogMeta = extractMetaFromEntryLog(entryLogger, entryLogId);
+                EntryLogMetadata entryLogMeta = entryLogger.getEntryLogMetadata(entryLogId);
                 entryLogMetaMap.put(entryLogId, entryLogMeta);
             } catch (IOException e) {
                 hasExceptionWhenScan = true;
@@ -690,17 +613,6 @@ public class GarbageCollectorThread extends SafeRunnable {
             }
         }
         return entryLogMetaMap;
-    }
-
-    static EntryLogMetadata extractMetaFromEntryLog(EntryLogger entryLogger, long entryLogId)
-            throws IOException {
-        EntryLogMetadata entryLogMeta = new EntryLogMetadata(entryLogId);
-        ExtractionScanner scanner = new ExtractionScanner(entryLogMeta);
-        // Read through the entry log file and extract the entry log meta
-        entryLogger.scanEntryLog(entryLogId, scanner);
-        LOG.debug("Retrieved entry log meta data entryLogId: {}, meta: {}",
-                  entryLogId, entryLogMeta);
-        return entryLogMeta;
     }
 
     /**
