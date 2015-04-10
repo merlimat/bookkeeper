@@ -21,6 +21,7 @@ package org.apache.bookkeeper.replication;
 
 import org.apache.bookkeeper.client.BKException;
 import org.apache.bookkeeper.client.BookKeeper;
+import org.apache.bookkeeper.client.BookKeeper.DigestType;
 import org.apache.bookkeeper.client.ClientUtil;
 import org.apache.bookkeeper.client.LedgerEntry;
 import org.apache.bookkeeper.client.LedgerHandle;
@@ -570,6 +571,42 @@ public class TestReplicationWorker extends MultiLedgerManagerTestCase {
         } finally {
             zk.close();
         }
+    }
+
+    /** Tests that an empty closed ledger is marked as replicated and that there's no more reference to failed bookie */
+    @Test(timeout = 60000)
+    public void testRecoveryOfEmptyClosedLedger() throws Exception {
+        LedgerHandle lh = bkc.createLedger(1, 1, BookKeeper.DigestType.CRC32, TESTPASSWD);
+        lh.close();
+
+        BookieSocketAddress replicaToKill = LedgerHandleAdapter.getLedgerMetadata(lh).getEnsembles().get(0L).get(0);
+
+        killBookie(replicaToKill);
+
+        int startNewBookie = startNewBookie();
+        BookieSocketAddress newBkAddr = new BookieSocketAddress(InetAddress.getLocalHost().getHostAddress(),
+                startNewBookie);
+        LOG.info("New Bookie addr :" + newBkAddr);
+        ReplicationWorker rw = new ReplicationWorker(zkc, baseConf, newBkAddr);
+
+        try {
+            underReplicationManager.markLedgerUnderreplicated(lh.getId(), replicaToKill.toString());
+            assertTrue(ReplicationTestUtil.isLedgerInUnderReplication(zkc, lh.getId(), basePath));
+
+            rw.start();
+
+            while (ReplicationTestUtil.isLedgerInUnderReplication(zkc, lh.getId(), basePath)) {
+                Thread.sleep(100);
+            }
+        } finally {
+            rw.shutdown();
+        }
+
+        LedgerHandle rolh = bkc.openLedger(lh.getId(), DigestType.CRC32, TESTPASSWD);
+
+        // Ledger metadata should have been updated, by having the new bookie as the ensemble member for the empty
+        // segment
+        assertEquals(newBkAddr, LedgerHandleAdapter.getLedgerMetadata(rolh).getEnsembles().get(0L).get(0));
     }
 
     private void killAllBookies(LedgerHandle lh, BookieSocketAddress excludeBK)

@@ -35,12 +35,15 @@ import org.jboss.netty.buffer.ChannelBuffer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.google.common.collect.Sets;
+
 /**
  *Checks the complete ledger and finds the UnderReplicated fragments if any
  */
 public class LedgerChecker {
     private final static Logger LOG = LoggerFactory.getLogger(LedgerChecker.class);
 
+    private final BookKeeperAdmin admin;
     public final BookieClient bookieClient;
 
     static class InvalidFragmentException extends Exception {
@@ -79,6 +82,7 @@ public class LedgerChecker {
     }
 
     public LedgerChecker(BookKeeper bkc) {
+        this.admin = new BookKeeperAdmin(bkc);
         bookieClient = bkc.getBookieClient();
     }
 
@@ -91,7 +95,17 @@ public class LedgerChecker {
             if (lastStored != LedgerHandle.INVALID_ENTRY_ID) {
                 throw new InvalidFragmentException();
             }
-            cb.operationComplete(BKException.Code.OK, fragment);
+
+            if (fragmentBelongsToUnavailableBookie(fragment)) {
+                if (LOG.isDebugEnabled()) {
+                    LOG.debug("Found empty fragment to replicate: {}", fragment);
+                }
+                // If the fragment belong to an unavailable bookie, we need to update its metadata to remove that bookie
+                cb.operationComplete(BKException.Code.NoSuchEntryException, fragment);
+            } else {
+                // The fragment is empty, and belongs to available bookies. No need to replicate
+                cb.operationComplete(BKException.Code.OK, fragment);
+            }
             return;
         }
         if (firstStored == lastStored) {
@@ -194,8 +208,7 @@ public class LedgerChecker {
 
         /* Checking the last segment of the ledger can be complicated in some cases.
          * In the case that the ledger is closed, we can just check the fragments of
-         * the segment as normal, except in the case that no entry was ever written,
-         * to the ledger, in which case we check no fragments.
+         * the segment as normal.
          * In the case that the ledger is open, but enough entries have been written,
          * for lastAddConfirmed to be set above the start entry of the segment, we
          * can also check as normal.
@@ -244,6 +257,12 @@ public class LedgerChecker {
             } else {
                 fragments.addAll(finalSegmentFragments);
             }
+        } else if (lh.metadata.isClosed()) {
+            // Final segment was closed but empty, we need to add it as well to remove the references to the failed
+            // bookie
+            for (int i = 0; i < curEnsemble.size(); i++) {
+                fragments.add(new LedgerFragment(lh, curEntryId, lh.getLastAddConfirmed(), i));
+            }
         }
 
         checkFragments(fragments, cb);
@@ -269,5 +288,25 @@ public class LedgerChecker {
                         BKException.Code.IncorrectParameterException, r);
             }
         }
+    }
+
+    private boolean fragmentBelongsToUnavailableBookie(LedgerFragment fragment) {
+        Set<BookieSocketAddress> availableBookies = Sets.newHashSet();
+        try {
+            availableBookies.addAll(admin.getAvailableBookies());
+            availableBookies.addAll(admin.getReadOnlyBookies());
+        } catch (BKException e) {
+            LOG.warn("Error getting list of available bookies: {}", availableBookies);
+            return true;
+        }
+
+        for (BookieSocketAddress bookie : fragment.getEnsemble()) {
+            if (!availableBookies.contains(bookie)) {
+                // Found a non available bookie
+                return true;
+            }
+        }
+
+        return false;
     }
 }
