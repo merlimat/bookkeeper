@@ -25,6 +25,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 
+import org.apache.bookkeeper.bookie.Bookie.NoLedgerException;
 import org.apache.bookkeeper.bookie.CheckpointSource.Checkpoint;
 import org.apache.bookkeeper.bookie.EntryLogger.EntryLogListener;
 import org.apache.bookkeeper.bookie.LedgerDirsManager.LedgerDirsListener;
@@ -338,7 +339,14 @@ public class InterleavedLedgerStorage implements CompactableLedgerStorage, Entry
     @Override
     public void updateEntriesLocations(Iterable<EntryLocation> locations) throws IOException {
         for (EntryLocation l : locations) {
-            ledgerCache.putEntryOffset(l.ledger, l.entry, l.location);
+            try {
+                ledgerCache.putEntryOffset(l.ledger, l.entry, l.location);
+            } catch (NoLedgerException e) {
+                // Ledger was already deleted, we can skip it in the compaction
+                if (LOG.isDebugEnabled()) {
+                    LOG.debug("Compaction failed for deleted ledger ledger: {} entry: {}", l.ledger, l.entry);
+                }
+            }
         }
 
         ledgerCache.flushLedger(true);
