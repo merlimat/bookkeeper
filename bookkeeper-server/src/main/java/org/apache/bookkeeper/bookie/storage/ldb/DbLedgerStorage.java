@@ -72,8 +72,8 @@ public class DbLedgerStorage implements CompactableLedgerStorage {
     private final RateLimiter readRateLimiter = RateLimiter.create(100);
     private final AtomicBoolean isThrottlingRequests = new AtomicBoolean(false);
 
-    private final ExecutorService executor = Executors.newCachedThreadPool(new ThreadFactoryBuilder().setNameFormat(
-            "db-storage-%s").build());
+    private final ExecutorService executor = Executors
+            .newCachedThreadPool(new ThreadFactoryBuilder().setNameFormat("db-storage-%s").build());
 
     static final String WRITE_CACHE_MAX_SIZE_MB = "dbStorage_writeCacheMaxSizeMb";
     static final String WRITE_CACHE_CHUNK_SIZE_MB = "dbStorage_writeCacheChunkSizeMb";
@@ -111,10 +111,9 @@ public class DbLedgerStorage implements CompactableLedgerStorage {
     private OpStatsLogger trimStats;
 
     @Override
-    public void initialize(ServerConfiguration conf,
-            GarbageCollectorThread.LedgerManagerProvider ledgerManagerProvider, LedgerDirsManager ledgerDirsManager,
-            LedgerDirsManager indexDirsManager, CheckpointSource checkpointSource, StatsLogger statsLogger)
-            throws IOException {
+    public void initialize(ServerConfiguration conf, GarbageCollectorThread.LedgerManagerProvider ledgerManagerProvider,
+            LedgerDirsManager ledgerDirsManager, LedgerDirsManager indexDirsManager, CheckpointSource checkpointSource,
+            StatsLogger statsLogger) throws IOException {
         checkArgument(ledgerDirsManager.getAllLedgerDirs().size() == 1,
                 "Db implementation only allows for one storage dir");
 
@@ -384,13 +383,21 @@ public class DbLedgerStorage implements CompactableLedgerStorage {
         }
     }
 
+    private final RateLimiter readAheadCacheLimiter = RateLimiter.create(1000);
+
     private void fillReadAheadCache(LedgerIndexPage ledgerIndexPage, long ledgerId, long entryId) {
         try {
             long lastEntryInPage = ledgerIndexPage.getLastEntry();
             int count = 0;
             long size = 0;
 
-            while (count < readAheadCacheBatchSize && entryId <= lastEntryInPage && readCache.size() < readCacheMaxSize) {
+            while (count < readAheadCacheBatchSize && entryId <= lastEntryInPage
+                    && readCache.size() < readCacheMaxSize) {
+                if (!readAheadCacheLimiter.tryAcquire(0, TimeUnit.NANOSECONDS)) {
+                    // Giving up
+                    return;
+                }
+
                 long entryLocation = ledgerIndexPage.getPosition(entryId);
                 if (entryLocation == 0L) {
                     // Skip entry since it's not stored on this bookie
@@ -427,8 +434,8 @@ public class DbLedgerStorage implements CompactableLedgerStorage {
                     long foundLedgerId = entry.getLong(); // ledgedId
                     long entryId = entry.getLong();
                     entry.rewind();
-                    log.debug("Found last entry for ledger {} in write cache: {}@{}", new Object[] { ledgerId,
-                            foundLedgerId, entryId });
+                    log.debug("Found last entry for ledger {} in write cache: {}@{}",
+                            new Object[] { ledgerId, foundLedgerId, entryId });
                 }
 
                 recordSuccessfulEvent(readCacheHitStats, startTime);
@@ -604,7 +611,7 @@ public class DbLedgerStorage implements CompactableLedgerStorage {
     public synchronized void updateEntriesLocations(Iterable<EntryLocation> locations) throws IOException {
         // Trigger a flush to have all the entries being compacted in the db storage
         flush();
-        
+
         // Remove entries from read-cache
         for (EntryLocation location : locations) {
             readCache.invalidate(location.ledger, location.entry);
