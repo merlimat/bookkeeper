@@ -21,15 +21,17 @@
 package org.apache.bookkeeper.proto;
 
 import static com.google.common.base.Charsets.UTF_8;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
+import io.netty.channel.EventLoopGroup;
+import io.netty.channel.nio.NioEventLoopGroup;
+import io.netty.util.HashedWheelTimer;
 
 import java.io.IOException;
 
-import java.net.InetSocketAddress;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Executors;
-
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
@@ -41,6 +43,7 @@ import org.apache.bookkeeper.net.BookieSocketAddress;
 import org.apache.bookkeeper.auth.AuthProviderFactoryFactory;
 import org.apache.bookkeeper.auth.ClientAuthProvider;
 import org.apache.bookkeeper.client.BKException;
+import org.apache.bookkeeper.client.BookKeeper;
 import org.apache.bookkeeper.conf.ClientConfiguration;
 import org.apache.bookkeeper.proto.BookkeeperInternalCallbacks.GenericCallback;
 import org.apache.bookkeeper.proto.BookkeeperInternalCallbacks.ReadEntryCallback;
@@ -49,12 +52,6 @@ import org.apache.bookkeeper.stats.NullStatsLogger;
 import org.apache.bookkeeper.stats.StatsLogger;
 import org.apache.bookkeeper.util.OrderedSafeExecutor;
 import org.apache.bookkeeper.util.SafeRunnable;
-import org.jboss.netty.buffer.ChannelBuffer;
-import org.jboss.netty.buffer.ChannelBuffers;
-import org.jboss.netty.channel.socket.ClientSocketChannelFactory;
-import org.jboss.netty.channel.socket.nio.NioClientSocketChannelFactory;
-import org.jboss.netty.util.HashedWheelTimer;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -71,7 +68,7 @@ public class BookieClient implements PerChannelBookieClientFactory {
     AtomicLong totalBytesOutstanding = new AtomicLong();
 
     OrderedSafeExecutor executor;
-    ClientSocketChannelFactory channelFactory;
+    EventLoopGroup eventLoopGroup;
     final ConcurrentHashMap<BookieSocketAddress, PerChannelBookieClientPool> channels =
             new ConcurrentHashMap<BookieSocketAddress, PerChannelBookieClientPool>();
     final HashedWheelTimer requestTimer;
@@ -85,16 +82,16 @@ public class BookieClient implements PerChannelBookieClientFactory {
     private final StatsLogger statsLogger;
     private final int numConnectionsPerBookie;
 
-    public BookieClient(ClientConfiguration conf, ClientSocketChannelFactory channelFactory,
+    public BookieClient(ClientConfiguration conf, EventLoopGroup eventLoopGroup,
                         OrderedSafeExecutor executor)
             throws IOException {
-        this(conf, channelFactory, executor, NullStatsLogger.INSTANCE);
+        this(conf, eventLoopGroup, executor, NullStatsLogger.INSTANCE);
     }
 
-    public BookieClient(ClientConfiguration conf, ClientSocketChannelFactory channelFactory,
+    public BookieClient(ClientConfiguration conf, EventLoopGroup eventLoopGroup,
                         OrderedSafeExecutor executor, StatsLogger statsLogger) throws IOException {
         this.conf = conf;
-        this.channelFactory = channelFactory;
+        this.eventLoopGroup = eventLoopGroup;
         this.executor = executor;
         this.closed = false;
         this.closeLock = new ReentrantReadWriteLock();
@@ -124,7 +121,7 @@ public class BookieClient implements PerChannelBookieClientFactory {
 
     @Override
     public PerChannelBookieClient create(BookieSocketAddress address) {
-        return new PerChannelBookieClient(conf, executor, channelFactory, address,
+        return new PerChannelBookieClient(conf, executor, eventLoopGroup, address,
                 requestTimer, authProviderFactory, registry, statsLogger);
     }
 
@@ -178,8 +175,7 @@ public class BookieClient implements PerChannelBookieClientFactory {
     }
 
     public void addEntry(final BookieSocketAddress addr, final long ledgerId, final byte[] masterKey,
-            final long entryId,
-            final ChannelBuffer toSend, final WriteCallback cb, final Object ctx, final int options) {
+            final long entryId, final ByteBuf toSend, final WriteCallback cb, final Object ctx, final int options) {
         closeLock.readLock().lock();
         try {
             final PerChannelBookieClientPool client = lookupClient(addr, entryId);
@@ -391,23 +387,19 @@ public class BookieClient implements PerChannelBookieClientFactory {
         byte hello[] = "hello".getBytes(UTF_8);
         long ledger = Long.parseLong(args[2]);
         ThreadFactoryBuilder tfb = new ThreadFactoryBuilder();
-        ClientSocketChannelFactory channelFactory = new NioClientSocketChannelFactory(
-                Executors.newCachedThreadPool(tfb.setNameFormat(
-                        "BookKeeper-NIOBoss-%d").build()),
-                Executors.newCachedThreadPool(tfb.setNameFormat(
-                        "BookKeeper-NIOWorker-%d").build()));
+        EventLoopGroup eventLoopGroup = new NioEventLoopGroup(1);
         OrderedSafeExecutor executor = new OrderedSafeExecutor(1,
                 "BookieClientWorker");
-        BookieClient bc = new BookieClient(new ClientConfiguration(), channelFactory, executor);
+        BookieClient bc = new BookieClient(new ClientConfiguration(), eventLoopGroup, executor);
         BookieSocketAddress addr = new BookieSocketAddress(args[0], Integer.parseInt(args[1]));
 
         for (int i = 0; i < 100000; i++) {
             counter.inc();
-            bc.addEntry(addr, ledger, new byte[0], i, ChannelBuffers.wrappedBuffer(hello), cb, counter, 0);
+            bc.addEntry(addr, ledger, new byte[0], i, Unpooled.wrappedBuffer(hello), cb, counter, 0);
         }
         counter.wait(0);
         System.out.println("Total = " + counter.total());
-        channelFactory.releaseExternalResources();
+        eventLoopGroup.shutdownGracefully();
         executor.shutdown();
     }
 }

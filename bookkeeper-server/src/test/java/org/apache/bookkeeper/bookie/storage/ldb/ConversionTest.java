@@ -103,7 +103,8 @@ public class ConversionTest {
                 entry.put(("entry-" + entryId).getBytes());
                 entry.flip();
 
-                Assert.assertEquals(entry, dbStorage.getEntry(ledgerId, entryId));
+                ByteBuffer result = dbStorage.getEntry(ledgerId, entryId);
+                Assert.assertEquals(entry, result);
 
                 try {
                     interleavedStorage.getEntry(ledgerId, entryId);

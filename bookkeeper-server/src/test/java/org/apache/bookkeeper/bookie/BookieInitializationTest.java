@@ -27,7 +27,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
-import org.jboss.netty.channel.ChannelException;
 import junit.framework.Assert;
 
 import org.apache.bookkeeper.conf.TestBKConfiguration;
@@ -36,7 +35,6 @@ import org.apache.bookkeeper.conf.ServerConfiguration;
 import org.apache.bookkeeper.util.StateMachine;
 import org.apache.bookkeeper.bookie.Bookie;
 import org.apache.bookkeeper.client.BookKeeperAdmin;
-
 import org.apache.bookkeeper.proto.BookieServer;
 import org.apache.bookkeeper.test.BookKeeperClusterTestCase;
 import org.apache.zookeeper.KeeperException;
@@ -185,11 +183,9 @@ public class BookieInitializationTest extends BookKeeperClusterTestCase {
             BookieServer bs2 = new BookieServer(conf);
             bs2.start();
             fail("Should throw BindException, as the bk server is already running!");
-        } catch (ChannelException ce) {
-            Assert.assertTrue("Should be caused by a bind exception",
-                              ce.getCause() instanceof BindException);
+        } catch (BindException e) {
             Assert.assertTrue("BKServer allowed duplicate startups!",
-                    ce.getCause().getMessage().contains("Address already in use"));
+                    e.getMessage().contains("Address already in use"));
         }
     }
 

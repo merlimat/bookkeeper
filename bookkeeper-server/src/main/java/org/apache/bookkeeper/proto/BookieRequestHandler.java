@@ -20,25 +20,21 @@
  */
 package org.apache.bookkeeper.proto;
 
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelInboundHandlerAdapter;
+import io.netty.channel.group.ChannelGroup;
+
 import java.nio.channels.ClosedChannelException;
 
 import org.apache.bookkeeper.conf.ServerConfiguration;
 import org.apache.bookkeeper.processor.RequestProcessor;
-import org.jboss.netty.channel.AdaptiveReceiveBufferSizePredictorFactory;
-import org.jboss.netty.channel.ChannelHandlerContext;
-import org.jboss.netty.channel.ChannelStateEvent;
-import org.jboss.netty.channel.ExceptionEvent;
-import org.jboss.netty.channel.MessageEvent;
-import org.jboss.netty.channel.SimpleChannelHandler;
-import org.jboss.netty.channel.group.ChannelGroup;
-import org.jboss.netty.channel.socket.nio.NioSocketChannelConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
  * Serverside handler for bookkeeper requests
  */
-class BookieRequestHandler extends SimpleChannelHandler {
+class BookieRequestHandler extends ChannelInboundHandlerAdapter {
 
     private final static Logger LOG = LoggerFactory.getLogger(BookieRequestHandler.class);
     private final RequestProcessor requestProcessor;
@@ -50,45 +46,35 @@ class BookieRequestHandler extends SimpleChannelHandler {
     }
 
     @Override
-    public void channelOpen(ChannelHandlerContext ctx,
-                            ChannelStateEvent e)
-            throws Exception {
-        NioSocketChannelConfig config = (NioSocketChannelConfig) ctx.getChannel().getConfig();
-        config.setReceiveBufferSizePredictorFactory(new AdaptiveReceiveBufferSizePredictorFactory(64 * 1024,
-                8 * 1024 * 1024, 12 * 1024 * 1024));
-        allChannels.add(ctx.getChannel());
+    public void channelActive(ChannelHandlerContext ctx) throws Exception {
+        LOG.debug("Channel connected {}", ctx.channel());
     }
 
     @Override
-    public void exceptionCaught(ChannelHandlerContext ctx, ExceptionEvent e) throws Exception {
-        Throwable throwable = e.getCause();
-        if (throwable instanceof ClosedChannelException) {
-            LOG.debug("Client died before request could be completed", throwable);
+    public void channelRegistered(ChannelHandlerContext ctx) throws Exception {
+        allChannels.add(ctx.channel());
+    }
+
+    @Override
+    public void channelInactive(ChannelHandlerContext ctx) throws Exception {
+        LOG.debug("Channel disconnected {}", ctx.channel());
+    }
+
+    @Override
+    public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
+        if (cause instanceof ClosedChannelException) {
+            LOG.debug("Client died before request could be completed", cause);
             return;
         }
-        LOG.error("Unhandled exception occurred in I/O thread or handler", throwable);
+        LOG.error("Unhandled exception occurred in I/O thread or handler", cause);
     }
 
     @Override
-    public void channelConnected(ChannelHandlerContext ctx, ChannelStateEvent e)
-            throws Exception {
-        LOG.debug("Channel connected {}", e);
-    }
-
-    @Override
-    public void channelDisconnected(ChannelHandlerContext ctx, ChannelStateEvent e)
-            throws Exception {
-        LOG.debug("Channel disconnected {}", e);
-    }
-
-    @Override
-    public void messageReceived(ChannelHandlerContext ctx, MessageEvent e) throws Exception {
-        Object event = e.getMessage();
-        if (!(event instanceof BookkeeperProtocol.Request || event instanceof BookieProtocol.Request)) {
-            ctx.sendUpstream(e);
+    public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+        if (!(msg instanceof BookkeeperProtocol.Request || msg instanceof BookieProtocol.Request)) {
+            ctx.fireChannelRead(msg);
             return;
         }
-        requestProcessor.processRequest(event, ctx.getChannel());
+        requestProcessor.processRequest(msg, ctx.channel());
     }
-
 }

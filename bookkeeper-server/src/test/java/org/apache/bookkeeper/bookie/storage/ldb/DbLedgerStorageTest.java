@@ -297,7 +297,8 @@ public class DbLedgerStorageTest {
             // Ok, entry doesn't exist
         }
 
-        assertEquals(entry2, storage.getEntry(1, 2));
+        ByteBuffer res = storage.getEntry(1, 2);
+        assertEquals(entry2, res);
 
         ByteBuffer entry1 = ByteBuffer.allocate(1024);
         entry1.putLong(1); // ledger id
@@ -307,13 +308,19 @@ public class DbLedgerStorageTest {
 
         storage.addEntry(entry1);
 
-        assertEquals(entry1, storage.getEntry(1, 1));
-        assertEquals(entry2, storage.getEntry(1, 2));
+        res = storage.getEntry(1, 1);
+        assertEquals(entry1, res);
+
+        res = storage.getEntry(1, 2);
+        assertEquals(entry2, res);
 
         storage.flush();
 
-        assertEquals(entry1, storage.getEntry(1, 1));
-        assertEquals(entry2, storage.getEntry(1, 2));
+        res = storage.getEntry(1, 1);
+        assertEquals(entry1, res);
+
+        res = storage.getEntry(1, 2);
+        assertEquals(entry2, res);
     }
 
     @Test
@@ -335,7 +342,8 @@ public class DbLedgerStorageTest {
             // Ok, entry doesn't exist
         }
 
-        assertEquals(entry2, storage.getEntry(1, 2));
+        ByteBuffer res = storage.getEntry(1, 2);
+        assertEquals(entry2, res);
 
         storage.flush();
 
@@ -346,7 +354,8 @@ public class DbLedgerStorageTest {
             // Ok, entry doesn't exist
         }
 
-        assertEquals(entry2, storage.getEntry(1, 2));
+        res = storage.getEntry(1, 2);
+        assertEquals(entry2, res);
 
         ByteBuffer entry1 = ByteBuffer.allocate(1024);
         entry1.putLong(1); // ledger id
@@ -356,13 +365,19 @@ public class DbLedgerStorageTest {
 
         storage.addEntry(entry1);
 
-        assertEquals(entry1, storage.getEntry(1, 1));
-        assertEquals(entry2, storage.getEntry(1, 2));
+        res = storage.getEntry(1, 1);
+        assertEquals(entry1, res);
+        
+        res = storage.getEntry(1, 2);
+        assertEquals(entry2, res);
 
         storage.flush();
 
-        assertEquals(entry1, storage.getEntry(1, 1));
-        assertEquals(entry2, storage.getEntry(1, 2));
+        res = storage.getEntry(1, 1);
+        assertEquals(entry1, res);
+        
+        res = storage.getEntry(1, 2);
+        assertEquals(entry2, res);
     }
 
 }

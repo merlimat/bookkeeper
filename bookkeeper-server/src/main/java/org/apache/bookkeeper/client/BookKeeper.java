@@ -20,10 +20,15 @@
  */
 package org.apache.bookkeeper.client;
 
+import io.netty.channel.EventLoopGroup;
+import io.netty.channel.epoll.EpollEventLoopGroup;
+import io.netty.channel.nio.NioEventLoopGroup;
+
 import java.io.IOException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
@@ -45,10 +50,9 @@ import org.apache.bookkeeper.util.ReflectionUtils;
 import org.apache.bookkeeper.util.ZkUtils;
 import org.apache.bookkeeper.zookeeper.ZooKeeperWatcherBase;
 import org.apache.commons.configuration.ConfigurationException;
+import org.apache.commons.lang.SystemUtils;
 import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.ZooKeeper;
-import org.jboss.netty.channel.socket.ClientSocketChannelFactory;
-import org.jboss.netty.channel.socket.nio.NioClientSocketChannelFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -72,7 +76,7 @@ public class BookKeeper {
     static final Logger LOG = LoggerFactory.getLogger(BookKeeper.class);
 
     final ZooKeeper zk;
-    final ClientSocketChannelFactory channelFactory;
+    final EventLoopGroup eventLoopGroup;
 
     // The stats logger for this client.
     private final StatsLogger statsLogger;
@@ -112,15 +116,15 @@ public class BookKeeper {
         final ClientConfiguration conf;
 
         ZooKeeper zk = null;
-        ClientSocketChannelFactory channelFactory = null;
+        EventLoopGroup eventLoopGroup = null;
         StatsLogger statsLogger = NullStatsLogger.INSTANCE;
 
         Builder(ClientConfiguration conf) {
             this.conf = conf;
         }
 
-        public Builder setChannelFactory(ClientSocketChannelFactory f) {
-            channelFactory = f;
+        public Builder setEventLoopGroup(EventLoopGroup f) {
+            eventLoopGroup = f;
             return this;
         }
 
@@ -143,17 +147,12 @@ public class BookKeeper {
                 zk = ZkUtils.createConnectedZookeeperClient(conf.getZkServers(), w);
                 w.waitForConnection();
             }
-            if (channelFactory == null) {
+            if (eventLoopGroup == null) {
                 ownChannelFactory = true;
-                ThreadFactoryBuilder tfb = new ThreadFactoryBuilder();
-                channelFactory = new NioClientSocketChannelFactory(
-                        Executors.newCachedThreadPool(tfb.setNameFormat(
-                                                              "BookKeeper-NIOBoss-%d").build()),
-                        Executors.newCachedThreadPool(tfb.setNameFormat(
-                                                              "BookKeeper-NIOWorker-%d").build()));
+                eventLoopGroup = getDefaultEventLoopGroup();
             }
 
-            BookKeeper bk = new BookKeeper(conf, zk, channelFactory, statsLogger);
+            BookKeeper bk = new BookKeeper(conf, zk, eventLoopGroup, statsLogger);
             bk.ownZKHandle = ownZK;
             bk.ownChannelFactory = ownChannelFactory;
 
@@ -201,11 +200,7 @@ public class BookKeeper {
         this.zk = ZkUtils
                 .createConnectedZookeeperClient(conf.getZkServers(), w);
         ThreadFactoryBuilder tfb = new ThreadFactoryBuilder();
-        this.channelFactory = new NioClientSocketChannelFactory(
-                Executors.newCachedThreadPool(tfb.setNameFormat(
-                        "BookKeeper-NIOBoss-%d").build()),
-                Executors.newCachedThreadPool(tfb.setNameFormat(
-                        "BookKeeper-NIOWorker-%d").build()));
+        this.eventLoopGroup = getDefaultEventLoopGroup();
         this.scheduler = Executors.newSingleThreadScheduledExecutor(tfb
                 .setNameFormat("BookKeeperClientScheduler-%d").build());
         this.statsLogger = NullStatsLogger.INSTANCE;
@@ -215,7 +210,7 @@ public class BookKeeper {
 
         mainWorkerPool = new OrderedSafeExecutor(conf.getNumWorkerThreads(),
                 "BookKeeperClientWorker");
-        bookieClient = new BookieClient(conf, channelFactory, mainWorkerPool);
+        bookieClient = new BookieClient(conf, eventLoopGroup, mainWorkerPool);
         bookieWatcher = new BookieWatcher(conf, scheduler, placementPolicy, this);
         bookieWatcher.readBookiesBlocking();
 
@@ -243,11 +238,7 @@ public class BookKeeper {
     public BookKeeper(ClientConfiguration conf, ZooKeeper zk)
             throws IOException, InterruptedException, KeeperException {
 
-        this(conf, zk, new NioClientSocketChannelFactory(
-                Executors.newCachedThreadPool(new ThreadFactoryBuilder()
-                        .setNameFormat("BookKeeper-NIOBoss-%d").build()),
-                Executors.newCachedThreadPool(new ThreadFactoryBuilder()
-                        .setNameFormat("BookKeeper-NIOWorker-%d").build())));
+        this(conf, zk, getDefaultEventLoopGroup());
         ownChannelFactory = true;
     }
 
@@ -268,18 +259,18 @@ public class BookKeeper {
      * @throws InterruptedException
      * @throws KeeperException if the passed zk handle is not connected
      */
-    public BookKeeper(ClientConfiguration conf, ZooKeeper zk, ClientSocketChannelFactory channelFactory)
+    public BookKeeper(ClientConfiguration conf, ZooKeeper zk, EventLoopGroup eventLoopGroup)
             throws IOException, InterruptedException, KeeperException {
-        this(conf, zk, channelFactory, NullStatsLogger.INSTANCE);
+        this(conf, zk, eventLoopGroup, NullStatsLogger.INSTANCE);
     }
 
     /**
      * Contructor for use with the builder. Other constructors also use it.
      */
     private BookKeeper(ClientConfiguration conf, ZooKeeper zk,
-                       ClientSocketChannelFactory channelFactory, StatsLogger statsLogger)
+                       EventLoopGroup eventLoopGroup, StatsLogger statsLogger)
             throws IOException, InterruptedException, KeeperException {
-        if (zk == null || channelFactory == null) {
+        if (zk == null || eventLoopGroup == null) {
             throw new NullPointerException();
         }
         if (!zk.getState().isConnected()) {
@@ -288,7 +279,7 @@ public class BookKeeper {
         }
         this.conf = conf;
         this.zk = zk;
-        this.channelFactory = channelFactory;
+        this.eventLoopGroup = eventLoopGroup;
         ThreadFactoryBuilder tfb = new ThreadFactoryBuilder().setNameFormat(
                 "BookKeeperClientScheduler-%d");
         this.scheduler = Executors
@@ -301,7 +292,7 @@ public class BookKeeper {
 
         mainWorkerPool = new OrderedSafeExecutor(conf.getNumWorkerThreads(),
                 "BookKeeperClientWorker");
-        bookieClient = new BookieClient(conf, channelFactory, mainWorkerPool, statsLogger);
+        bookieClient = new BookieClient(conf, eventLoopGroup, mainWorkerPool, statsLogger);
         bookieWatcher = new BookieWatcher(conf, scheduler, placementPolicy, this);
         bookieWatcher.readBookiesBlocking();
 
@@ -827,7 +818,7 @@ public class BookKeeper {
         }
 
         if (ownChannelFactory) {
-            channelFactory.releaseExternalResources();
+            eventLoopGroup.shutdownGracefully();
         }
         if (ownZKHandle) {
             zk.close();
@@ -907,4 +898,19 @@ public class BookKeeper {
     OpStatsLogger getDeleteOpLogger() { return deleteOpLogger; }
     OpStatsLogger getReadOpLogger() { return readOpLogger; }
     OpStatsLogger getAddOpLogger() { return addOpLogger; }
+
+    static EventLoopGroup getDefaultEventLoopGroup() {
+        ThreadFactory threadFactory = new ThreadFactoryBuilder().setNameFormat("bookkeeper-io-%s").build();
+        final int numThreads = Runtime.getRuntime().availableProcessors() * 2;
+
+        if (SystemUtils.IS_OS_LINUX) {
+            try {
+                return new EpollEventLoopGroup(numThreads, threadFactory);
+            } catch (UnsatisfiedLinkError e) {
+                return new NioEventLoopGroup(numThreads, threadFactory);
+            }
+        } else {
+            return new NioEventLoopGroup(numThreads, threadFactory);
+        }
+    }
 }

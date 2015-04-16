@@ -26,6 +26,14 @@ import org.apache.bookkeeper.net.BookieSocketAddress;
 import org.apache.bookkeeper.proto.BookieClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.CompositeByteBuf;
+import io.netty.buffer.PooledByteBufAllocator;
+import io.netty.buffer.Unpooled;
+import io.netty.channel.EventLoopGroup;
+import io.netty.channel.nio.NioEventLoopGroup;
+
 import org.apache.bookkeeper.proto.BookkeeperInternalCallbacks.WriteCallback;
 import org.apache.bookkeeper.util.MathUtils;
 import org.apache.bookkeeper.util.OrderedSafeExecutor;
@@ -40,13 +48,13 @@ public class BookieBenchmark extends AbstractBenchmark {
 
     BookieClient bkc;
     BookieSocketAddress addr;
-    ClientSocketChannelFactory channelFactory;
+    final EventLoopGroup eventLoop;
     OrderedSafeExecutor executor = new OrderedSafeExecutor(1, "BookieBenchmarkScheduler");
 
 
     public BookieBenchmark(String bookieHostPort)  throws Exception {
-        channelFactory = new NioClientSocketChannelFactory(Executors.newCachedThreadPool(), Executors.newCachedThreadPool());
-        bkc = new BookieClient(new ClientConfiguration(), channelFactory, executor);
+        eventLoop = new NioEventLoopGroup();
+        bkc = new BookieClient(new ClientConfiguration(), eventLoop, executor);
         String[] hostPort = bookieHostPort.split(":");
         addr = new BookieSocketAddress(hostPort[0], Integer.parseInt(hostPort[1]));
     }
@@ -75,14 +83,14 @@ public class BookieBenchmark extends AbstractBenchmark {
         for (int i=0; i<numOps; i++) {
             outstanding.acquire();
 
-            ByteBuffer buffer = ByteBuffer.allocate(44);
+            ByteBuf buffer = Unpooled.buffer(44);
             long ledgerId = 1000;
-            buffer.putLong(ledgerId);
-            buffer.putLong(i);
-            buffer.putLong(0);
-            buffer.put(passwd);
-            buffer.rewind();
-            ChannelBuffer toSend = ChannelBuffers.wrappedBuffer(ChannelBuffers.wrappedBuffer(buffer.slice()), ChannelBuffers.wrappedBuffer(data));
+            buffer.writeLong(ledgerId);
+            buffer.writeLong(i);
+            buffer.writeLong(0);
+            buffer.writeBytes(passwd);
+            ByteBuf toSend = new CompositeByteBuf(PooledByteBufAllocator.DEFAULT, true, 2, buffer,
+                    Unpooled.wrappedBuffer(data));
             bkc.addEntry(addr, ledgerId, passwd, i, toSend, callback, MathUtils.now(), 0);
         }
 
@@ -91,7 +99,7 @@ public class BookieBenchmark extends AbstractBenchmark {
     @Override
     public void tearDown() {
         bkc.close();
-        channelFactory.releaseExternalResources();
+        eventLoop.shutdownGracefully();
         executor.shutdown();
     }
 

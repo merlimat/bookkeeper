@@ -18,16 +18,18 @@ package org.apache.bookkeeper.client;
  * limitations under the License.
  */
 
-import java.nio.ByteBuffer;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufInputStream;
+import io.netty.buffer.CompositeByteBuf;
+import io.netty.buffer.PooledByteBufAllocator;
+import io.netty.buffer.Unpooled;
+
 import java.security.GeneralSecurityException;
 
 import org.apache.bookkeeper.client.BKException.BKDigestMatchException;
 import org.apache.bookkeeper.client.BookKeeper.DigestType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.jboss.netty.buffer.ChannelBuffer;
-import org.jboss.netty.buffer.ChannelBufferInputStream;
-import org.jboss.netty.buffer.ChannelBuffers;
 
 /**
  * This class takes an entry, attaches a digest to it and packages it with relevant
@@ -46,11 +48,11 @@ abstract class DigestManager {
     abstract int getMacCodeLength();
 
     void update(byte[] data) {
-        update(data, 0, data.length);
+        update(Unpooled.wrappedBuffer(data, 0, data.length));
     }
 
-    abstract void update(byte[] data, int offset, int length);
-    abstract byte[] getValueAndReset();
+    abstract void update(ByteBuf buffer);
+    abstract void getValueAndReset(ByteBuf buffer);
 
     final int macCodeLength;
 
@@ -80,41 +82,32 @@ abstract class DigestManager {
      * @return
      */
 
-    public ChannelBuffer computeDigestAndPackageForSending(long entryId, long lastAddConfirmed, long length, byte[] data, int doffset, int dlength) {
+    public ByteBuf computeDigestAndPackageForSending(long entryId, long lastAddConfirmed, long length, byte[] data, int doffset, int dlength) {
+        ByteBuf headersBuffer = PooledByteBufAllocator.DEFAULT.buffer(METADATA_LENGTH + macCodeLength);
+        headersBuffer.writeLong(ledgerId);
+        headersBuffer.writeLong(entryId);
+        headersBuffer.writeLong(lastAddConfirmed);
+        headersBuffer.writeLong(length);
+        
+        ByteBuf dataBuffer = Unpooled.wrappedBuffer(data, doffset, dlength);
 
-        byte[] bufferArray = new byte[METADATA_LENGTH + macCodeLength];
-        ByteBuffer buffer = ByteBuffer.wrap(bufferArray);
-        buffer.putLong(ledgerId);
-        buffer.putLong(entryId);
-        buffer.putLong(lastAddConfirmed);
-        buffer.putLong(length);
-        buffer.flip();
+        update(headersBuffer);
+        update(dataBuffer);
+        getValueAndReset(headersBuffer);
 
-        update(buffer.array(), 0, METADATA_LENGTH);
-        update(data, doffset, dlength);
-        byte[] digest = getValueAndReset();
-
-        buffer.limit(buffer.capacity());
-        buffer.position(METADATA_LENGTH);
-        buffer.put(digest);
-        buffer.flip();
-
-        return ChannelBuffers.wrappedBuffer(ChannelBuffers.wrappedBuffer(buffer), ChannelBuffers.wrappedBuffer(data, doffset, dlength));
+        return new CompositeByteBuf(PooledByteBufAllocator.DEFAULT, false, 2, headersBuffer, dataBuffer);
     }
 
-    private void verifyDigest(ChannelBuffer dataReceived) throws BKDigestMatchException {
+    private void verifyDigest(ByteBuf dataReceived) throws BKDigestMatchException {
         verifyDigest(LedgerHandle.INVALID_ENTRY_ID, dataReceived, true);
     }
 
-    private void verifyDigest(long entryId, ChannelBuffer dataReceived) throws BKDigestMatchException {
+    private void verifyDigest(long entryId, ByteBuf dataReceived) throws BKDigestMatchException {
         verifyDigest(entryId, dataReceived, false);
     }
 
-    private void verifyDigest(long entryId, ChannelBuffer dataReceived, boolean skipEntryIdCheck)
+    private void verifyDigest(long entryId, ByteBuf dataReceived, boolean skipEntryIdCheck)
             throws BKDigestMatchException {
-
-        ByteBuffer dataReceivedBuffer = dataReceived.toByteBuffer();
-        byte[] digest;
 
         if ((METADATA_LENGTH + macCodeLength) > dataReceived.readableBytes()) {
             logger.error("Data received is smaller than the minimum for this digest type. "
@@ -123,17 +116,21 @@ abstract class DigestManager {
                     this.getClass().getName(), dataReceived.readableBytes());
             throw new BKDigestMatchException();
         }
-        update(dataReceivedBuffer.array(), dataReceivedBuffer.position(), METADATA_LENGTH);
+        update(dataReceived.slice(0, METADATA_LENGTH));
 
         int offset = METADATA_LENGTH + macCodeLength;
-        update(dataReceivedBuffer.array(), dataReceivedBuffer.position() + offset, dataReceived.readableBytes() - offset);
-        digest = getValueAndReset();
+        update(dataReceived.slice(offset, dataReceived.readableBytes() - offset));
 
-        for (int i = 0; i < digest.length; i++) {
-            if (digest[i] != dataReceived.getByte(METADATA_LENGTH + i)) {
+        ByteBuf digest = PooledByteBufAllocator.DEFAULT.buffer(macCodeLength);
+        getValueAndReset(digest);
+
+        try {
+            if (digest.compareTo(dataReceived.slice(METADATA_LENGTH, macCodeLength)) != 0) {
                 logger.error("Mac mismatch for ledger-id: " + ledgerId + ", entry-id: " + entryId);
                 throw new BKDigestMatchException();
             }
+        } finally {
+            digest.release();
         }
 
         long actualLedgerId = dataReceived.readLong();
@@ -161,11 +158,11 @@ abstract class DigestManager {
      * @return
      * @throws BKDigestMatchException
      */
-    ChannelBufferInputStream verifyDigestAndReturnData(long entryId, ChannelBuffer dataReceived)
+    ByteBufInputStream verifyDigestAndReturnData(long entryId, ByteBuf dataReceived)
             throws BKDigestMatchException {
         verifyDigest(entryId, dataReceived);
         dataReceived.readerIndex(METADATA_LENGTH + macCodeLength);
-        return new ChannelBufferInputStream(dataReceived);
+        return new ByteBufInputStream(dataReceived);
     }
 
     static class RecoveryData {
@@ -179,7 +176,7 @@ abstract class DigestManager {
 
     }
 
-    RecoveryData verifyDigestAndReturnLastConfirmed(ChannelBuffer dataReceived) throws BKDigestMatchException {
+    RecoveryData verifyDigestAndReturnLastConfirmed(ByteBuf dataReceived) throws BKDigestMatchException {
         verifyDigest(dataReceived);
         dataReceived.readerIndex(8);
 
