@@ -80,7 +80,7 @@ public class LedgerFragmentReplicator {
             ledgerFragmentMcb.processResult(BKException.Code.OK, null, null);
             return;
         }
-        if (startEntryId > endEntryId || startEntryId == -1) {
+        if (startEntryId > endEntryId) {
             // for open ledger which there is no entry, the start entry id is 0,
             // the end entry id is -1.
             // we can return immediately to trigger forward read

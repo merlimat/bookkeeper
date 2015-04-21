@@ -263,12 +263,6 @@ public class ReplicationWorker implements Runnable {
         }
 
         if (foundOpenFragments || isLastSegmentOpenAndMissingBookies(lh)) {
-            if (LOG.isDebugEnabled()) {
-                LOG.debug(
-                        "Deferring release of ledger lock for ledger: {} -- foundOpenFragments: {} -- isLastSegmentOpenAndMissingBookies: {}",
-                        new Object[] { ledgerIdToReplicate, foundOpenFragments,
-                                isLastSegmentOpenAndMissingBookies(lh) });
-            }
             deferLedgerLockRelease(ledgerIdToReplicate);
             return false;
         }
@@ -280,9 +274,6 @@ public class ReplicationWorker implements Runnable {
             underreplicationManager.markLedgerReplicated(ledgerIdToReplicate);
             return true;
         } else {
-            if (LOG.isDebugEnabled()) {
-                LOG.debug("There are still under-replicated fragments: ledger: {} -- fragments: {}", ledgerIdToReplicate, fragments);
-            }
             // Releasing the underReplication ledger lock and compete
             // for the replication again for the pending fragments
             underreplicationManager
