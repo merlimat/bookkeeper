@@ -34,7 +34,9 @@ public class TrimOp {
     }
 
     void initiate() {
-        log.debug("Initiating trimming of {}@{}", lastEntryId, lh.getId());
+        if (log.isDebugEnabled()) {
+            log.debug("Initiating trimming of {}@{}", lastEntryId, lh.getId());
+        }
         if (lastEntryId < 0) {
             // No need to send the trim request
             return;

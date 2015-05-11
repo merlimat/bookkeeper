@@ -88,8 +88,10 @@ public class ScanAndCompareGarbageCollector implements GarbageCollector{
                 Iterable<Long> subBkActiveLedgers = bkActiveLedgers.subSet(start, true, end, false);
 
                 Set<Long> ledgersInMetadata = lRange.getLedgers();
-                LOG.debug("Active in metadata {}, Active in bookie {}",
+                if (LOG.isDebugEnabled()) {
+                    LOG.debug("Active in metadata {}, Active in bookie {}",
                           ledgersInMetadata, subBkActiveLedgers);
+                }
                 for (Long bkLid : subBkActiveLedgers) {
                     if (!ledgersInMetadata.contains(bkLid)) {
                         garbageCleaner.clean(bkLid);

@@ -224,7 +224,9 @@ public class LedgerHandle {
     }
 
     void writeLedgerConfig(GenericCallback<Void> writeCb) {
-        LOG.debug("Writing metadata to ledger manager: {}, {}", this.ledgerId, metadata.getVersion());
+        if (LOG.isDebugEnabled()) {
+            LOG.debug("Writing metadata to ledger manager: {}, {}", this.ledgerId, metadata.getVersion());
+        }
 
         bk.getLedgerManager().writeLedgerMetadata(ledgerId, metadata, writeCb);
     }
@@ -273,7 +275,9 @@ public class LedgerHandle {
         try {
             doAsyncCloseInternal(cb, ctx, rc);
         } catch (RejectedExecutionException re) {
-            LOG.debug("Failed to close ledger {} : ", ledgerId, re);
+            if (LOG.isDebugEnabled()) {
+                LOG.debug("Failed to close ledger {} : ", ledgerId, re);
+            }
             errorOutPendingAdds(bk.getReturnRc(rc));
             cb.closeComplete(bk.getReturnRc(BKException.Code.InterruptedException), this, ctx);
         }
@@ -654,7 +658,9 @@ public class LedgerHandle {
      */
     public void asyncTrim(final long lastEntryId) {
         if (metadata.isClosed()) {
-            LOG.debug("Attempt to trim a closed ledger: {}", ledgerId);
+            if (LOG.isDebugEnabled()) {
+                LOG.debug("Attempt to trim a closed ledger: {}", ledgerId);
+            }
             return;
         }
 

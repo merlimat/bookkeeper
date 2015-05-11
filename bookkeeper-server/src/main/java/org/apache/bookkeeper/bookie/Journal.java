@@ -169,7 +169,9 @@ class Journal extends BookieCriticalThread implements CheckpointSource {
             // which is safe since records before lastMark have been
             // persisted to disk (both index & entry logger)
             lastMark.getCurMark().writeLogMark(bb);
-            LOG.debug("RollLog to persist last marked log : {}", lastMark.getCurMark());
+            if (LOG.isDebugEnabled()) {
+                LOG.debug("RollLog to persist last marked log : {}", lastMark.getCurMark());
+            }
             List<File> writableLedgerDirs = ledgerDirsManager
                     .getWritableLedgerDirs();
             for (File dir : writableLedgerDirs) {

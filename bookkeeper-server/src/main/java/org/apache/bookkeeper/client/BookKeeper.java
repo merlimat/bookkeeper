@@ -861,7 +861,9 @@ public class BookKeeper {
             SyncCounter counter = (SyncCounter) ctx;
             counter.setLh(lh);
 
-            LOG.debug("Open complete: {}", rc);
+            if (LOG.isDebugEnabled()) {
+                LOG.debug("Open complete: {}", rc);
+            }
 
             counter.setrc(rc);
             counter.dec();

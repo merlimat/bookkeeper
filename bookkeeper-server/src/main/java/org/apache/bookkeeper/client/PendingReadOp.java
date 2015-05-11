@@ -200,11 +200,15 @@ class PendingReadOp implements Enumeration<LedgerEntry>, ReadEntryCallback {
             if (BKException.Code.NoSuchEntryException == rc ||
                 BKException.Code.NoSuchLedgerExistsException == rc) {
                 ++numMissedEntryReads;
-                LOG.debug("No such entry found on bookie.  L{} E{} bookie: {}",
-                        new Object[] { lh.ledgerId, entryId, host });
+                if (LOG.isDebugEnabled()) {
+                    LOG.debug("No such entry found on bookie.  L{} E{} bookie: {}",
+                            new Object[] { lh.ledgerId, entryId, host });
+                }
             } else {
-                LOG.debug(errMsg + " while reading L{} E{} from bookie: {}",
-                          new Object[] { lh.ledgerId, entryId, host });
+                if (LOG.isDebugEnabled()) {
+                    LOG.debug(errMsg + " while reading L{} E{} from bookie: {}",
+                            new Object[] { lh.ledgerId, entryId, host });
+                }
             }
 
             int replica = getReplicaIndex(host);
@@ -306,8 +310,10 @@ class PendingReadOp implements Enumeration<LedgerEntry>, ReadEntryCallback {
                         }
                     }
                     if (x > 0) {
-                        LOG.debug("Send {} speculative reads for ledger {} ({}, {}). Hosts heard are {}.",
-                                  new Object[] { x, lh.getId(), startEntryId, endEntryId, heardFromHosts });
+                        if (LOG.isDebugEnabled()) {
+                            LOG.debug("Send {} speculative reads for ledger {} ({}, {}). Hosts heard are {}.",
+                                    new Object[] { x, lh.getId(), startEntryId, endEntryId, heardFromHosts });
+                        }
                     }
                 }
             };

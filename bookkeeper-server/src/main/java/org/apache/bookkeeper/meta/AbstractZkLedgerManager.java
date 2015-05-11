@@ -84,10 +84,14 @@ abstract class AbstractZkLedgerManager implements LedgerManager, Watcher {
         @Override
         public void run() {
             if (null != listeners.get(ledgerId)) {
-                LOG.debug("Re-read ledger metadata for {}.", ledgerId);
+                if (LOG.isDebugEnabled()) {
+                    LOG.debug("Re-read ledger metadata for {}.", ledgerId);
+                }
                 readLedgerMetadata(ledgerId, this, AbstractZkLedgerManager.this);
             } else {
-                LOG.debug("Ledger metadata listener for ledger {} is already removed.", ledgerId);
+                if (LOG.isDebugEnabled()) {
+                    LOG.debug("Ledger metadata listener for ledger {} is already removed.", ledgerId);
+                }
             }
         }
 
@@ -96,7 +100,9 @@ abstract class AbstractZkLedgerManager implements LedgerManager, Watcher {
             if (BKException.Code.OK == rc) {
                 final Set<LedgerMetadataListener> listenerSet = listeners.get(ledgerId);
                 if (null != listenerSet) {
-                    LOG.debug("Ledger metadata is changed for {} : {}.", ledgerId, result);
+                    if (LOG.isDebugEnabled()) {
+                        LOG.debug("Ledger metadata is changed for {} : {}.", ledgerId, result);
+                    }
                     scheduler.submit(new Runnable() {
                         @Override
                         public void run() {
@@ -112,8 +118,10 @@ abstract class AbstractZkLedgerManager implements LedgerManager, Watcher {
                 // the ledger is removed, do nothing
                 Set<LedgerMetadataListener> listenerSet = listeners.remove(ledgerId);
                 if (null != listenerSet) {
-                    LOG.debug("Removed ledger metadata listener set on ledger {} as its ledger is deleted : {}",
-                            ledgerId, listenerSet.size());
+                    if (LOG.isDebugEnabled()) {
+                        LOG.debug("Removed ledger metadata listener set on ledger {} as its ledger is deleted : {}",
+                                ledgerId, listenerSet.size());
+                    }
                 }
             } else {
                 LOG.warn("Failed on read ledger metadata of ledger {} : {}", ledgerId, rc);
@@ -192,23 +200,29 @@ abstract class AbstractZkLedgerManager implements LedgerManager, Watcher {
             Set<LedgerMetadataListener> listenerSet = listeners.get(ledgerId);
             if (null != listenerSet) {
                 synchronized(listenerSet){
-                    LOG.debug("Removed ledger metadata listeners on ledger {} : {}",
-                            ledgerId, listenerSet);
+                    if (LOG.isDebugEnabled()) {
+                        LOG.debug("Removed ledger metadata listeners on ledger {} : {}",
+                                ledgerId, listenerSet);
+                    }
                     for(LedgerMetadataListener l : listenerSet) {
                         unregisterLedgerMetadataListener(ledgerId, l);
                         l.onChanged( ledgerId, null );
                     }
                 }
             } else {
-                LOG.debug("No ledger metadata listeners to remove from ledger {} after it's deleted.",
-                        ledgerId);
+                if (LOG.isDebugEnabled()) {
+                    LOG.debug("No ledger metadata listeners to remove from ledger {} after it's deleted.",
+                            ledgerId);
+                }
             }
             break;
         case NodeDataChanged:
             new ReadLedgerMetadataTask(ledgerId).run();
             break;
         default:
-            LOG.debug("Received event {} on {}.", event.getType(), event.getPath());
+            if (LOG.isDebugEnabled()) {
+                LOG.debug("Received event {} on {}.", event.getType(), event.getPath());
+            }
             break;
         }
     }
@@ -249,11 +263,15 @@ abstract class AbstractZkLedgerManager implements LedgerManager, Watcher {
                     // removed listener on ledgerId
                     Set<LedgerMetadataListener> listenerSet = listeners.remove(ledgerId);
                     if (null != listenerSet) {
-                        LOG.debug("Remove registered ledger metadata listeners on ledger {} after ledger is deleted.",
-                                ledgerId, listenerSet);
+                        if (LOG.isDebugEnabled()) {
+                            LOG.debug("Remove registered ledger metadata listeners on ledger {} after ledger is deleted.",
+                                    ledgerId, listenerSet);
+                        }
                     } else {
-                        LOG.debug("No ledger metadata listeners to remove from ledger {} when it's being deleted.",
-                                ledgerId);
+                        if (LOG.isDebugEnabled()) {
+                            LOG.debug("No ledger metadata listeners to remove from ledger {} when it's being deleted.",
+                                    ledgerId);
+                        }
                     }
                     bkRc = BKException.Code.OK;
                 } else {

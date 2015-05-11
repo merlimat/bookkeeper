@@ -991,7 +991,9 @@ public class Bookie extends BookieCriticalThread {
 
         writeBytes.add(entry.readableBytes());
 
-        LOG.trace("Adding {}@{}", entryId, ledgerId);
+        if (LOG.isTraceEnabled()) {
+            LOG.trace("Adding {}@{}", entryId, ledgerId);
+        }
         getJournal(ledgerId).logAddEntry(entry, cb, ctx);
     }
 
@@ -1056,7 +1058,9 @@ public class Bookie extends BookieCriticalThread {
             bb.flip();
 
             FutureWriteCallback fwc = new FutureWriteCallback();
-            LOG.debug("record fenced state for ledger {} in journal.", ledgerId);
+            if (LOG.isDebugEnabled()) {
+                LOG.debug("record fenced state for ledger {} in journal.", ledgerId);
+            }
             getJournal(ledgerId).logAddEntry(bb, fwc, null);
             return fwc.getResult();
         } else {
@@ -1068,7 +1072,9 @@ public class Bookie extends BookieCriticalThread {
     public ByteBuf readEntry(long ledgerId, long entryId)
             throws IOException, NoLedgerException {
         LedgerDescriptor handle = handles.getReadOnlyHandle(ledgerId);
-        LOG.trace("Reading {}@{}", entryId, ledgerId);
+        if (LOG.isTraceEnabled()) {
+            LOG.trace("Reading {}@{}", entryId, ledgerId);
+        }
         ByteBuf entry = handle.readEntry(entryId);
         readBytes.add(entry.readableBytes());
         return entry;
@@ -1077,7 +1083,9 @@ public class Bookie extends BookieCriticalThread {
     public void trim(long ledgerId, long lastEntryId)
             throws IOException, NoLedgerException {
         LedgerDescriptor handle = handles.getReadOnlyHandle(ledgerId);
-        LOG.trace("Trim {}@{}", lastEntryId, ledgerId);
+        if (LOG.isTraceEnabled()) {
+            LOG.trace("Trim {}@{}", lastEntryId, ledgerId);
+        }
         handle.trim(lastEntryId);
     }
     

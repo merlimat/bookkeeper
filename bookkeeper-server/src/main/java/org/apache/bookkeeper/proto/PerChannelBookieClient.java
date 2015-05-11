@@ -688,8 +688,10 @@ public class PerChannelBookieClient extends ChannelInboundHandlerAdapter {
                     bAddress = c.remoteAddress().toString();
                 }
 
-                LOG.debug("Could not write request for reading entry: {} ledger-id: {} bookie: {} rc: {}",
-                        new Object[]{ readCompletion.entryId, readCompletion.ledgerId, bAddress, rc });
+                if (LOG.isDebugEnabled()) {
+                    LOG.debug("Could not write request for reading entry: {} ledger-id: {} bookie: {} rc: {}",
+                            new Object[] { readCompletion.entryId, readCompletion.ledgerId, bAddress, rc });
+                }
 
                 readCompletion.cb.readEntryComplete(rc, readCompletion.ledgerId, readCompletion.entryId,
                                                     null, readCompletion.ctx);
@@ -716,12 +718,17 @@ public class PerChannelBookieClient extends ChannelInboundHandlerAdapter {
                 if(c != null) {
                     bAddress = c.remoteAddress().toString();
                 }
-                LOG.debug("Could not write request for adding entry: {} ledger-id: {} bookie: {} rc: {}",
-                          new Object[] { addCompletion.entryId, addCompletion.ledgerId, bAddress, rc });
+
+                if (LOG.isDebugEnabled()) {
+                    LOG.debug("Could not write request for adding entry: {} ledger-id: {} bookie: {} rc: {}",
+                            new Object[] { addCompletion.entryId, addCompletion.ledgerId, bAddress, rc });
+                }
 
                 addCompletion.cb.writeComplete(rc, addCompletion.ledgerId, addCompletion.entryId,
                                                addr, addCompletion.ctx);
-                LOG.debug("Invoked callback method: {}", addCompletion.entryId);
+                if (LOG.isDebugEnabled()) {
+                    LOG.debug("Invoked callback method: {}", addCompletion.entryId);
+                }
             }
         });
     }

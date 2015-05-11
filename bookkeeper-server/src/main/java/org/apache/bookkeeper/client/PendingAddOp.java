@@ -187,7 +187,9 @@ class PendingAddOp implements WriteCallback {
         if (ackSet.addBookieAndCheck(bookieIndex) && !completed) {
             completed = true;
 
-            LOG.debug("Complete (lid:{}, eid:{}).", ledgerId, entryId);
+            if (LOG.isDebugEnabled()) {
+                LOG.debug("Complete (lid:{}, eid:{}).", ledgerId, entryId);
+            }
             // when completed an entry, try to send success add callbacks in order
             lh.sendAddSuccessCallbacks();
         }

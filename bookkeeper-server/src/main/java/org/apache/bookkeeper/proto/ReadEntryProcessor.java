@@ -64,7 +64,9 @@ class ReadEntryProcessor extends PacketProcessorBase {
                 }
             }
             data = requestProcessor.bookie.readEntry(request.getLedgerId(), request.getEntryId());
-            LOG.debug("##### Read entry ##### {} -- ref-count: {}", data.readableBytes(), data.refCnt());
+            if (LOG.isDebugEnabled()) {
+                LOG.debug("##### Read entry ##### {} -- ref-count: {}", data.readableBytes(), data.refCnt());
+            }
             if (null != fenceResult) {
                 // TODO:
                 // currently we don't have readCallback to run in separated read
@@ -124,8 +126,9 @@ class ReadEntryProcessor extends PacketProcessorBase {
             errorCode = BookieProtocol.EUA;
         }
 
-        LOG.trace("Read entry rc = {} for {}",
-                new Object[] { errorCode, read });
+        if (LOG.isTraceEnabled()) {
+            LOG.trace("Read entry rc = {} for {}", new Object[] { errorCode, read });
+        }
         if (errorCode == BookieProtocol.EOK) {
             requestProcessor.readEntryStats.registerSuccessfulEvent(MathUtils.elapsedNanos(startTimeNanos),
                     TimeUnit.NANOSECONDS);

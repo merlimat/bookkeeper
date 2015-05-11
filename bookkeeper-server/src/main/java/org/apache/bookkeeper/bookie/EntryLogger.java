@@ -741,7 +741,9 @@ public class EntryLogger {
     synchronized void flushCurrentLog() throws IOException {
         if (logChannel != null) {
             logChannel.flush(true);
-            LOG.debug("Flush and sync current entry logger {}.", logChannel.getLogId());
+            if (LOG.isDebugEnabled()) {
+                LOG.debug("Flush and sync current entry logger {}.", logChannel.getLogId());
+            }
         }
     }
 
@@ -1125,7 +1127,9 @@ public class EntryLogger {
             }
         });
 
-        LOG.debug("Retrieved entry log meta data entryLogId: {}, meta: {}", entryLogId, meta);
+        if (LOG.isDebugEnabled()) {
+            LOG.debug("Retrieved entry log meta data entryLogId: {}, meta: {}", entryLogId, meta);
+        }
         return meta;
     }
 
