@@ -260,6 +260,14 @@ class AuthHandler {
                     } else {
                         waitingForAuth.add(msg);
                     }
+                } else if (msg instanceof BookieProtocol.Request) {
+                    // let auth messages through, queue the rest
+                    BookieProtocol.Request req = (BookieProtocol.Request) msg;
+                    if (req.opCode == BookkeeperProtocol.OperationType.AUTH.getNumber()) {
+                        super.write(ctx, msg, promise);
+                    } else {
+                        waitingForAuth.add(msg);
+                    }
                 } else {
                     // else just drop
                     promise.setFailure(null);

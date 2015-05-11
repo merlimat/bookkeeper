@@ -54,6 +54,8 @@ public class ClientConfiguration extends AbstractConfiguration {
     protected final static String CLIENT_WRITEBUFFER_HIGH_WATER_MARK = "clientWriteBufferHighWaterMark";
     protected final static String CLIENT_CONNECT_TIMEOUT_MILLIS = "clientConnectTimeoutMillis";
     protected final static String NUM_CHANNELS_PER_BOOKIE = "numChannelsPerBookie";
+    protected final static String USE_V2_WIRE_PROTOCOL = "useV2WireProtocol";
+
     // Read Parameters
     protected final static String READ_TIMEOUT = "readTimeout";
     protected final static String SPECULATIVE_READ_TIMEOUT = "speculativeReadTimeout";
@@ -331,6 +333,27 @@ public class ClientConfiguration extends AbstractConfiguration {
      */
     public ClientConfiguration setNumChannelsPerBookie(int numChannelsPerBookie) {
         setProperty(NUM_CHANNELS_PER_BOOKIE, numChannelsPerBookie);
+        return this;
+    }
+
+    /**
+     * Use older Bookkeeper wire protocol (no protobuf)
+     *
+     * @return use different connections.
+     */
+    public boolean getUseV2WireProtocol() {
+        return getBoolean(USE_V2_WIRE_PROTOCOL, false);
+    }
+
+    /**
+     * Set whether or not to use older Bookkeeper wire protocol (no protobuf)
+     *
+     * @param useSeparateChannelsForReadAndWrites
+     *            use different connections.
+     * @return client configuration.
+     */
+    public ClientConfiguration setUseV2WireProtocol(boolean useV2WireProtocol) {
+        setProperty(USE_V2_WIRE_PROTOCOL, useV2WireProtocol);
         return this;
     }
 
