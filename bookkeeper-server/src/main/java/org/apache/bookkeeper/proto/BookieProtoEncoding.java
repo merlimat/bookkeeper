@@ -24,6 +24,7 @@ import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.buffer.ByteBufInputStream;
 import io.netty.buffer.ByteBufOutputStream;
+import io.netty.buffer.ByteBufProcessor;
 import io.netty.buffer.CompositeByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandler.Sharable;
@@ -72,6 +73,15 @@ public class BookieProtoEncoding {
 
     static class RequestEnDeCoderPreV3 implements EnDecoder {
         final ExtensionRegistry extensionRegistry;
+
+        // ByteBufProcessor used to find whether a portion of a byte buf is composed only of 0s
+        private final static ByteBufProcessor zeroByteFinder = new ByteBufProcessor() {
+            public boolean process(byte value) throws Exception {
+                return value == 0;
+            }
+        };
+
+        private final static byte[] emptyMasterKey = new byte[0];
 
         RequestEnDeCoderPreV3(ExtensionRegistry extensionRegistry) {
             this.extensionRegistry = extensionRegistry;
@@ -154,9 +164,16 @@ public class BookieProtoEncoding {
 
             switch (h.getOpCode()) {
             case BookieProtocol.ADDENTRY:
-                // first read master key
-                masterKey = new byte[BookieProtocol.MASTER_KEY_LENGTH];
-                packet.readBytes(masterKey, 0, BookieProtocol.MASTER_KEY_LENGTH);
+                // first read master key, if master key is composed only of 0s, we'll avoid to allocated and copy it
+                if (packet.forEachByte(packet.readerIndex(), BookieProtocol.MASTER_KEY_LENGTH, zeroByteFinder) == -1) {
+                    // Master key is all 0s
+                    masterKey = emptyMasterKey;
+                    packet.readerIndex(packet.readerIndex() + BookieProtocol.MASTER_KEY_LENGTH);
+                } else {
+                    // Master key is set, we need to copy and check it
+                    masterKey = new byte[BookieProtocol.MASTER_KEY_LENGTH];
+                    packet.readBytes(masterKey, 0, BookieProtocol.MASTER_KEY_LENGTH);
+                }
 
                 ByteBuf bb = packet.duplicate();
 

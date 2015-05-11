@@ -84,6 +84,9 @@ public class LedgerHandle {
     final Counter lacUpdateHitsCounter;
     final Counter lacUpdateMissesCounter;
 
+    // Empty ledger key to be used when an empty password is provided
+    private final static byte[] emptyLedgerKey = new byte[MacDigestManager.MAC_CODE_LENGTH];
+
     LedgerHandle(BookKeeper bk, long ledgerId, LedgerMetadata metadata,
                  DigestType digestType, byte[] password)
             throws GeneralSecurityException, NumberFormatException {
@@ -107,7 +110,10 @@ public class LedgerHandle {
         }
 
         macManager = DigestManager.instantiate(ledgerId, password, digestType);
-        this.ledgerKey = MacDigestManager.genDigest("ledger", password);
+
+        // If password was empty, pass a ledgerKey filled with 0s, so that the bookie can avoid processing the keys for
+        // each entry
+        this.ledgerKey = password.length > 0 ? MacDigestManager.genDigest("ledger", password) : emptyLedgerKey;
         distributionSchedule = new RoundRobinDistributionSchedule(
                 metadata.getWriteQuorumSize(), metadata.getAckQuorumSize(), metadata.getEnsembleSize());
 

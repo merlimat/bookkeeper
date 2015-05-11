@@ -38,6 +38,8 @@ class MacDigestManager extends DigestManager {
     public static String DIGEST_ALGORITHM = "SHA-1";
     public static String KEY_ALGORITHM = "HmacSHA1";
 
+    public static final int MAC_CODE_LENGTH = 20;
+
     final byte[] passwd;
 
     private final ThreadLocal<Mac> mac = new ThreadLocal<Mac>() {
@@ -70,7 +72,7 @@ class MacDigestManager extends DigestManager {
 
     @Override
     int getMacCodeLength() {
-        return 20;
+        return MAC_CODE_LENGTH;
     }
 
 
