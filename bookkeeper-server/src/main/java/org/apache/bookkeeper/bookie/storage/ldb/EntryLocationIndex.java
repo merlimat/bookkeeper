@@ -38,22 +38,28 @@ public class EntryLocationIndex implements Closeable {
         EntryRange(long ledgerId, long firstEntry, long lastEntry) {
             super(ledgerId, firstEntry);
             this.lastEntry = lastEntry;
-            log.debug("Created new entry range ({}, {}, {})", new Object[] { ledgerId, firstEntry, lastEntry });
+            if (log.isDebugEnabled()) {
+                log.debug("Created new entry range ({}, {}, {})", new Object[] { ledgerId, firstEntry, lastEntry });
+            }
         }
 
         @Override
         public int compareTo(LongPair lp) {
             if (lp instanceof EntryRange) {
                 EntryRange er = (EntryRange) lp;
-                log.debug("Comparing range {} with other range {}", this, er);
+                if (log.isDebugEnabled()) {
+                    log.debug("Comparing range {} with other range {}", this, er);
+                }
                 return ComparisonChain.start().compare(first, er.first).compare(second, er.second)
                         .compare(lastEntry, er.lastEntry).result();
             } else {
                 long otherLedgerId = lp.first;
                 long otherEntryId = lp.second;
 
-                log.debug("Comparing range ({}, {}, {}) to entry {}, {}", new Object[] { first, second, lastEntry,
-                        otherLedgerId, otherEntryId });
+                if (log.isDebugEnabled()) {
+                    log.debug("Comparing range ({}, {}, {}) to entry {}, {}", new Object[] { first, second, lastEntry,
+                            otherLedgerId, otherEntryId });
+                }
                 if (first != otherLedgerId) {
                     return Long.compare(first, otherLedgerId);
                 } else {
@@ -130,33 +136,45 @@ public class EntryLocationIndex implements Closeable {
 
     LedgerIndexPage getLedgerIndexPage(long ledgerId, long entryId) throws IOException {
         if (deletedLedgers.contains(ledgerId)) {
-            log.debug("Entry not found {}@{} - Ledger already deleted", ledgerId, entryId);
+            if (log.isDebugEnabled()) {
+                log.debug("Entry not found {}@{} - Ledger already deleted", ledgerId, entryId);
+            }
             throw new Bookie.NoEntryException(ledgerId, entryId);
         }
 
         LedgerIndexPage ledgerIndexPage = locationsCache.get(new LongPair(ledgerId, entryId));
         if (ledgerIndexPage != null) {
-            log.debug("Found ledger index page for {}@{} in cache", ledgerId, entryId);
+            if (log.isDebugEnabled()) {
+                log.debug("Found ledger index page for {}@{} in cache", ledgerId, entryId);
+            }
             return ledgerIndexPage;
         }
 
-        log.debug("Loading ledger index page for {}@{} from db", ledgerId, entryId);
+        if (log.isDebugEnabled()) {
+            log.debug("Loading ledger index page for {}@{} from db", ledgerId, entryId);
+        }
 
         LongPair key = new LongPair(ledgerId, entryId + 1);
         Entry<byte[], byte[]> entry = locationsDb.getFloor(key.toArray());
         if (entry == null) {
-            log.debug("1. Entry not found {}@{}", ledgerId, entryId);
+            if (log.isDebugEnabled()) {
+                log.debug("1. Entry not found {}@{}", ledgerId, entryId);
+            }
             throw new Bookie.NoEntryException(ledgerId, entryId);
         }
 
         ledgerIndexPage = new LedgerIndexPage(entry.getKey(), entry.getValue());
         if (ledgerIndexPage.getLedgerId() != ledgerId || entryId < ledgerIndexPage.getFirstEntry()
                 || entryId > ledgerIndexPage.getLastEntry()) {
-            log.debug("2. Entry not found {}@{}", ledgerId, entryId);
-            log.debug("Not found.. entries: {}", ledgerIndexPage);
+            if (log.isDebugEnabled()) {
+                log.debug("2. Entry not found {}@{}", ledgerId, entryId);
+                log.debug("Not found.. entries: {}", ledgerIndexPage);
+            }
             throw new Bookie.NoEntryException(ledgerId, entryId);
         } else {
-            log.debug("Found page in db: {}", ledgerIndexPage);
+            if (log.isDebugEnabled()) {
+                log.debug("Found page in db: {}", ledgerIndexPage);
+            }
             locationsCache.put(new EntryRange(ledgerIndexPage.getLedgerId(), ledgerIndexPage.getFirstEntry(),
                     ledgerIndexPage.getLastEntry()), ledgerIndexPage);
             return ledgerIndexPage;
@@ -182,7 +200,9 @@ public class EntryLocationIndex implements Closeable {
             // There is no entry in the ledger we are looking into
             return -1L;
         } else {
-            log.debug("Found last page in storage db for ledger {} : {}", ledgerId, ledgerIndexPage);
+            if (log.isDebugEnabled()) {
+                log.debug("Found last page in storage db for ledger {} : {}", ledgerId, ledgerIndexPage);
+            }
             return ledgerIndexPage.getLastEntry();
         }
     }
@@ -253,7 +273,9 @@ public class EntryLocationIndex implements Closeable {
 
             LedgerIndexPage indexPage = new LedgerIndexPage(ledgerId, entries);
 
-            log.debug("Adding page to index: {}", indexPage);
+            if (log.isDebugEnabled()) {
+                log.debug("Adding page to index: {}", indexPage);
+            }
             batch.add(indexPage);
         }
 
@@ -269,7 +291,9 @@ public class EntryLocationIndex implements Closeable {
 
         // Update all the ledger index pages with the new locations
         for (EntryLocation e : newLocations) {
-            log.debug("Update location - ledger: {} -- entry: {}", e.ledger, e.entry);
+            if (log.isDebugEnabled()) {
+                log.debug("Update location - ledger: {} -- entry: {}", e.ledger, e.entry);
+            }
             LedgerIndexPage indexPage = getLedgerIndexPage(e.ledger, e.entry);
             indexPage.setPosition(e.entry, e.location);
             pagesUpdated.add(indexPage);
@@ -294,7 +318,9 @@ public class EntryLocationIndex implements Closeable {
 
         LongPair firstKey = new LongPair(ledgerId, 0);
         LongPair lastKey = new LongPair(ledgerId + 1, 0);
-        log.debug("Deleting from {} to {}", firstKey, lastKey);
+        if (log.isDebugEnabled()) {
+            log.debug("Deleting from {} to {}", firstKey, lastKey);
+        }
 
         locationsCache.removeRange(firstKey, lastKey);
     }
@@ -306,7 +332,9 @@ public class EntryLocationIndex implements Closeable {
         for (Long ledgerId : deletedLedgersList) {
             LongPair firstKey = new LongPair(ledgerId, 0);
             LongPair lastKey = new LongPair(ledgerId + 1, 0);
-            log.debug("Deleting from {} to {}", firstKey, lastKey);
+            if (log.isDebugEnabled()) {
+                log.debug("Deleting from {} to {}", firstKey, lastKey);
+            }
 
             CloseableIterator<byte[]> iter = locationsDb.keys(firstKey.toArray(), lastKey.toArray());
             try {

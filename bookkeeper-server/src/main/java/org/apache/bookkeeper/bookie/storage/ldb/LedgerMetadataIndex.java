@@ -98,7 +98,9 @@ public class LedgerMetadataIndex implements Closeable {
     public LedgerData get(long ledgerId) throws IOException {
         LedgerData ledgerData = ledgers.get(ledgerId);
         if (ledgerData == null) {
-            log.debug("Ledger not found {}", ledgerId);
+            if (log.isDebugEnabled()) {
+                log.debug("Ledger not found {}", ledgerId);
+            }
             throw new Bookie.NoLedgerException(ledgerId);
         }
 
@@ -109,7 +111,9 @@ public class LedgerMetadataIndex implements Closeable {
         ledgerData = LedgerData.newBuilder(ledgerData).setExists(true).build();
 
         if (ledgers.put(ledgerId, ledgerData) == null) {
-            log.debug("Added new ledger {}", ledgerId);
+            if (log.isDebugEnabled()) {
+                log.debug("Added new ledger {}", ledgerId);
+            }
             ledgersCount.incrementAndGet();
         }
 
@@ -118,7 +122,9 @@ public class LedgerMetadataIndex implements Closeable {
 
     public void delete(long ledgerId) throws IOException {
         if (ledgers.remove(ledgerId) != null) {
-            log.debug("Removed ledger {}", ledgerId);
+            if (log.isDebugEnabled()) {
+                log.debug("Removed ledger {}", ledgerId);
+            }
             ledgersCount.decrementAndGet();
         }
 
@@ -153,10 +159,14 @@ public class LedgerMetadataIndex implements Closeable {
 
         if (ledgers.put(ledgerId, newLedgerData) == null) {
             // Ledger had been deleted
-            log.debug("Re-inserted fenced ledger {}", ledgerId);
+            if (log.isDebugEnabled()) {
+                log.debug("Re-inserted fenced ledger {}", ledgerId);
+            }
             ledgersCount.incrementAndGet();
         } else {
-            log.debug("Set fenced ledger {}", ledgerId);
+            if (log.isDebugEnabled()) {
+                log.debug("Set fenced ledger {}", ledgerId);
+            }
         }
 
         pendingLedgersUpdates.add(new SimpleEntry<Long, LedgerData>(ledgerId, newLedgerData));
@@ -169,7 +179,9 @@ public class LedgerMetadataIndex implements Closeable {
             // New ledger inserted
             ledgerData = LedgerData.newBuilder().setExists(true).setFenced(false)
                     .setMasterKey(ByteString.copyFrom(masterKey)).build();
-            log.debug("Inserting new ledger {}", ledgerId);
+            if (log.isDebugEnabled()) {
+                log.debug("Inserting new ledger {}", ledgerId);
+            }
         } else {
             if (!Arrays.equals(ledgerData.getMasterKey().toByteArray(), masterKey)) {
                 log.warn("Ledger {} masterKey in db can only be set once.", ledgerId);
@@ -197,7 +209,9 @@ public class LedgerMetadataIndex implements Closeable {
             updates.add(new SimpleEntry<byte[], byte[]>(key, value));
         }
 
-        log.debug("Persisting updates to {} ledgers", updates.size());
+        if (log.isDebugEnabled()) {
+            log.debug("Persisting updates to {} ledgers", updates.size());
+        }
         ledgersDb.put(updates);
 
         List<byte[]> deletes = Lists.newArrayList();
@@ -206,7 +220,9 @@ public class LedgerMetadataIndex implements Closeable {
             deletes.add(toArray(ledgerId));
         }
 
-        log.debug("Persisting deletes of ledgers", deletes.size());
+        if (log.isDebugEnabled()) {
+            log.debug("Persisting deletes of ledgers", deletes.size());
+        }
         ledgersDb.delete(deletes);
     }
 

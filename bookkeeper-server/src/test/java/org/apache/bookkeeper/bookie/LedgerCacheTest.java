@@ -21,9 +21,11 @@
 
 package org.apache.bookkeeper.bookie;
 
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
+
 import java.io.File;
 import java.io.IOException;
-import java.nio.ByteBuffer;
 
 import org.apache.bookkeeper.bookie.Bookie.NoLedgerException;
 import org.apache.bookkeeper.conf.ServerConfiguration;
@@ -32,6 +34,7 @@ import org.apache.bookkeeper.meta.LedgerManagerFactory;
 import org.apache.bookkeeper.util.BookKeeperConstants;
 import org.apache.bookkeeper.util.SnapshotMap;
 import org.apache.bookkeeper.util.IOUtils;
+
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.ArrayList;
@@ -295,9 +298,9 @@ public class LedgerCacheTest {
 
         assertFalse("After flush index file should be changed", before.equals(after));
         // Verify written entries
-        Assert.assertArrayEquals(generateEntry(1, 1).array(), ledgerStorage.getEntry(1, 1).array());
-        Assert.assertArrayEquals(generateEntry(1, 2).array(), ledgerStorage.getEntry(1, 2).array());
-        Assert.assertArrayEquals(generateEntry(1, 3).array(), ledgerStorage.getEntry(1, 3).array());
+        Assert.assertEquals(generateEntry(1, 1), ledgerStorage.getEntry(1, 1));
+        Assert.assertEquals(generateEntry(1, 2), ledgerStorage.getEntry(1, 2));
+        Assert.assertEquals(generateEntry(1, 3), ledgerStorage.getEntry(1, 3));
     }
 
     /**
@@ -326,7 +329,7 @@ public class LedgerCacheTest {
         Bookie b = new Bookie(conf);
         b.start();
         for (int i = 1; i <= numLedgers; i++) {
-            ByteBuffer packet = generateEntry(i, 1);
+            ByteBuf packet = generateEntry(i, 1);
             b.addEntry(packet, new Bookie.NopWriteCallback(), null, "passwd".getBytes());
         }
 
@@ -447,13 +450,12 @@ public class LedgerCacheTest {
         flushThread.interrupt();
     }
 
-    private ByteBuffer generateEntry(long ledger, long entry) {
+    private ByteBuf generateEntry(long ledger, long entry) {
         byte[] data = ("ledger-" + ledger + "-" + entry).getBytes();
-        ByteBuffer bb = ByteBuffer.wrap(new byte[8 + 8 + data.length]);
-        bb.putLong(ledger);
-        bb.putLong(entry);
-        bb.put(data);
-        bb.flip();
+        ByteBuf bb = Unpooled.buffer(8 + 8 + data.length);
+        bb.writeLong(ledger);
+        bb.writeLong(entry);
+        bb.writeBytes(data);
         return bb;
     }
 }

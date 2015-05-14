@@ -20,23 +20,20 @@
  */
 package org.apache.bookkeeper.proto;
 
-import com.google.common.util.concurrent.ThreadFactoryBuilder;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import static org.apache.bookkeeper.bookie.BookKeeperServerStats.ADD_ENTRY;
+import static org.apache.bookkeeper.bookie.BookKeeperServerStats.ADD_ENTRY_REQUEST;
+import static org.apache.bookkeeper.bookie.BookKeeperServerStats.READ_ENTRY;
+import static org.apache.bookkeeper.bookie.BookKeeperServerStats.READ_ENTRY_REQUEST;
+import io.netty.channel.Channel;
 
 import org.apache.bookkeeper.bookie.Bookie;
 import org.apache.bookkeeper.conf.ServerConfiguration;
 import org.apache.bookkeeper.processor.RequestProcessor;
 import org.apache.bookkeeper.stats.OpStatsLogger;
 import org.apache.bookkeeper.stats.StatsLogger;
-import org.jboss.netty.channel.Channel;
+import org.apache.bookkeeper.util.OrderedSafeExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import static org.apache.bookkeeper.bookie.BookKeeperServerStats.ADD_ENTRY;
-import static org.apache.bookkeeper.bookie.BookKeeperServerStats.ADD_ENTRY_REQUEST;
-import static org.apache.bookkeeper.bookie.BookKeeperServerStats.READ_ENTRY;
-import static org.apache.bookkeeper.bookie.BookKeeperServerStats.READ_ENTRY_REQUEST;
 
 public class BookieRequestProcessor implements RequestProcessor {
 
@@ -55,12 +52,12 @@ public class BookieRequestProcessor implements RequestProcessor {
     /**
      * The threadpool used to execute all read entry requests issued to this server.
      */
-    private final ExecutorService readThreadPool;
+    private final OrderedSafeExecutor readThreadPool;
 
     /**
      * The threadpool used to execute all add entry requests issued to this server.
      */
-    private final ExecutorService writeThreadPool;
+    private final OrderedSafeExecutor writeThreadPool;
 
     // Expose Stats
     private final BKStats bkStats = BKStats.getInstance();
@@ -74,12 +71,8 @@ public class BookieRequestProcessor implements RequestProcessor {
                                   StatsLogger statsLogger) {
         this.serverCfg = serverCfg;
         this.bookie = bookie;
-        this.readThreadPool =
-            createExecutor(this.serverCfg.getNumReadWorkerThreads(),
-                           "BookieReadThread-" + serverCfg.getBookiePort() + "-%d");
-        this.writeThreadPool =
-            createExecutor(this.serverCfg.getNumAddWorkerThreads(),
-                           "BookieWriteThread-" + serverCfg.getBookiePort() + "-%d");
+        this.readThreadPool = createExecutor(this.serverCfg.getNumReadWorkerThreads(), "BookieReadThread-" + serverCfg.getBookiePort());
+        this.writeThreadPool = createExecutor(this.serverCfg.getNumAddWorkerThreads(), "BookieWriteThread-" + serverCfg.getBookiePort());
         // Expose Stats
         this.statsEnabled = serverCfg.isStatisticsEnabled();
         this.addEntryStats = statsLogger.getOpStatsLogger(ADD_ENTRY);
@@ -94,16 +87,15 @@ public class BookieRequestProcessor implements RequestProcessor {
         shutdownExecutor(readThreadPool);
     }
 
-    private ExecutorService createExecutor(int numThreads, String nameFormat) {
+    private OrderedSafeExecutor createExecutor(int numThreads, String nameFormat) {
         if (numThreads <= 0) {
             return null;
         } else {
-            return Executors.newFixedThreadPool(numThreads,
-                new ThreadFactoryBuilder().setNameFormat(nameFormat).build());
+            return new OrderedSafeExecutor(numThreads, nameFormat);
         }
     }
 
-    private void shutdownExecutor(ExecutorService service) {
+    private void shutdownExecutor(OrderedSafeExecutor service) {
         if (null != service) {
             service.shutdown();
         }
@@ -131,7 +123,7 @@ public class BookieRequestProcessor implements RequestProcessor {
                     BookkeeperProtocol.Response.Builder response =
                             BookkeeperProtocol.Response.newBuilder().setHeader(r.getHeader())
                             .setStatus(BookkeeperProtocol.StatusCode.EBADREQ);
-                    c.write(response.build());
+                    c.writeAndFlush(response.build());
                     if (statsEnabled) {
                         bkStats.getOpStats(BKStats.STATS_UNKNOWN).incrementFailedOps();
                     }
@@ -152,7 +144,7 @@ public class BookieRequestProcessor implements RequestProcessor {
                     break;
                 default:
                     LOG.error("Unknown op type {}, sending error", r.getOpCode());
-                    c.write(ResponseBuilder.buildErrorResponse(BookieProtocol.EBADREQ, r));
+                    c.writeAndFlush(ResponseBuilder.buildErrorResponse(BookieProtocol.EBADREQ, r));
                     if (statsEnabled) {
                         bkStats.getOpStats(BKStats.STATS_UNKNOWN).incrementFailedOps();
                     }
@@ -166,7 +158,7 @@ public class BookieRequestProcessor implements RequestProcessor {
         if (null == writeThreadPool) {
             write.run();
         } else {
-            writeThreadPool.submit(write);
+            writeThreadPool.submitOrdered(r.getAddRequest().getLedgerId(), write);
         }
     }
 
@@ -175,7 +167,7 @@ public class BookieRequestProcessor implements RequestProcessor {
         if (null == readThreadPool) {
             read.run();
         } else {
-            readThreadPool.submit(read);
+            readThreadPool.submitOrdered(r.getReadRequest().getLedgerId(), read);
         }
     }
 
@@ -192,7 +184,7 @@ public class BookieRequestProcessor implements RequestProcessor {
         if (null == writeThreadPool) {
             trim.run();
         } else {
-            writeThreadPool.submit(trim);
+            writeThreadPool.submitOrdered(r.getTrimRequest().getLedgerId(), trim);
         }
 
     }
@@ -202,7 +194,7 @@ public class BookieRequestProcessor implements RequestProcessor {
         if (null == writeThreadPool) {
             write.run();
         } else {
-            writeThreadPool.submit(write);
+            writeThreadPool.submitOrdered(r.getLedgerId(), write);
         }
     }
 
@@ -211,7 +203,7 @@ public class BookieRequestProcessor implements RequestProcessor {
         if (null == readThreadPool) {
             read.run();
         } else {
-            readThreadPool.submit(read);
+            readThreadPool.submitOrdered(r.getLedgerId(), read);
         }
     }
 
@@ -229,7 +221,7 @@ public class BookieRequestProcessor implements RequestProcessor {
         if (null == writeThreadPool) {
             trim.run();
         } else {
-            writeThreadPool.submit(trim);
+            writeThreadPool.submitOrdered(r.getLedgerId(), trim);
         }
     }
 }

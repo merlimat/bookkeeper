@@ -212,9 +212,10 @@ public class StateMachine {
 
         @Override
         public void deferEvent(DeferrableEvent e) {
-            LOG.debug("FSM-{}: deferred {}@{}",
-                    new Object[] { getFsmId(), e.getClass().getSimpleName(),
-                                   System.identityHashCode(e) });
+            if (LOG.isDebugEnabled()) {
+                LOG.debug("FSM-{}: deferred {}@{}",
+                        new Object[] { getFsmId(), e.getClass().getSimpleName(), System.identityHashCode(e) });
+            }
             deferred.add(e);
         }
 
@@ -224,7 +225,9 @@ public class StateMachine {
 
         @Override
         public void finalize() {
-            LOG.debug("FSM-{}: Finalizing", getFsmId());
+            if (LOG.isDebugEnabled()) {
+                LOG.debug("FSM-{}: Finalizing", getFsmId());
+            }
         }
     }
 

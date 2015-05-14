@@ -33,6 +33,9 @@ import java.util.concurrent.TimeUnit;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 
+import io.netty.channel.EventLoopGroup;
+import io.netty.channel.nio.NioEventLoopGroup;
+
 import org.apache.bookkeeper.conf.ClientConfiguration;
 import org.apache.bookkeeper.client.BookKeeper;
 import org.apache.bookkeeper.client.BKException;
@@ -99,6 +102,7 @@ public class PubSubServer {
     // Netty related variables
     ServerSocketChannelFactory serverChannelFactory;
     ClientSocketChannelFactory clientChannelFactory;
+    EventLoopGroup bkClientEventLoop;
     ServerConfiguration conf;
     org.apache.hedwig.client.conf.ClientConfiguration clientConfiguration;
     ChannelGroup allChannels;
@@ -137,7 +141,7 @@ public class PubSubServer {
             try {
                 ClientConfiguration bkConf = new ClientConfiguration();
                 bkConf.addConfiguration(conf.getConf());
-                bk = new BookKeeper(bkConf, zk, clientChannelFactory);
+                bk = new BookKeeper(bkConf, zk, bkClientEventLoop);
             } catch (KeeperException e) {
                 logger.error("Could not instantiate bookkeeper client", e);
                 throw new IOException(e);
@@ -307,6 +311,7 @@ public class PubSubServer {
         allChannels.close().awaitUninterruptibly();
         serverChannelFactory.releaseExternalResources();
         clientChannelFactory.releaseExternalResources();
+        bkClientEventLoop.shutdownGracefully();
         scheduler.shutdown();
 
         // unregister jmx
@@ -416,6 +421,7 @@ public class PubSubServer {
                                     "PubSub-Client-NIOBoss-%d").build()),
                             Executors.newCachedThreadPool(tfb.setNameFormat(
                                     "PubSub-Client-NIOWorker-%d").build()));
+                    bkClientEventLoop = new NioEventLoopGroup();
 
                     instantiateZookeeperClient();
                     instantiateMetadataManagerFactory();

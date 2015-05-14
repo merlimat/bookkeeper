@@ -21,6 +21,8 @@
 package org.apache.bookkeeper.client;
 
 import static com.google.common.base.Charsets.UTF_8;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 
 import java.security.GeneralSecurityException;
 import java.util.ArrayList;
@@ -38,7 +40,6 @@ import org.apache.bookkeeper.client.AsyncCallback.CloseCallback;
 import org.apache.bookkeeper.client.AsyncCallback.ReadCallback;
 import org.apache.bookkeeper.client.AsyncCallback.ReadLastConfirmedCallback;
 import org.apache.bookkeeper.client.BookKeeper.DigestType;
-
 import org.apache.bookkeeper.net.BookieSocketAddress;
 import org.apache.bookkeeper.proto.BookieProtocol;
 import org.apache.bookkeeper.proto.BookkeeperInternalCallbacks.GenericCallback;
@@ -47,7 +48,6 @@ import org.apache.bookkeeper.stats.Counter;
 import org.apache.bookkeeper.stats.Gauge;
 import org.apache.bookkeeper.util.OrderedSafeExecutor.OrderedSafeGenericCallback;
 import org.apache.bookkeeper.util.SafeRunnable;
-import org.jboss.netty.buffer.ChannelBuffer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -85,6 +85,9 @@ public class LedgerHandle {
     final Counter lacUpdateHitsCounter;
     final Counter lacUpdateMissesCounter;
 
+    // Empty ledger key to be used when an empty password is provided
+    private final static byte[] emptyLedgerKey = new byte[MacDigestManager.MAC_CODE_LENGTH];
+
     LedgerHandle(BookKeeper bk, long ledgerId, LedgerMetadata metadata,
                  DigestType digestType, byte[] password)
             throws GeneralSecurityException, NumberFormatException {
@@ -108,7 +111,10 @@ public class LedgerHandle {
         }
 
         macManager = DigestManager.instantiate(ledgerId, password, digestType);
-        this.ledgerKey = MacDigestManager.genDigest("ledger", password);
+
+        // If password was empty, pass a ledgerKey filled with 0s, so that the bookie can avoid processing the keys for
+        // each entry
+        this.ledgerKey = password.length > 0 ? MacDigestManager.genDigest("ledger", password) : emptyLedgerKey;
         distributionSchedule = new RoundRobinDistributionSchedule(
                 metadata.getWriteQuorumSize(), metadata.getAckQuorumSize(), metadata.getEnsembleSize());
 
@@ -218,7 +224,9 @@ public class LedgerHandle {
     }
 
     void writeLedgerConfig(GenericCallback<Void> writeCb) {
-        LOG.debug("Writing metadata to ledger manager: {}, {}", this.ledgerId, metadata.getVersion());
+        if (LOG.isDebugEnabled()) {
+            LOG.debug("Writing metadata to ledger manager: {}, {}", this.ledgerId, metadata.getVersion());
+        }
 
         bk.getLedgerManager().writeLedgerMetadata(ledgerId, metadata, writeCb);
     }
@@ -267,7 +275,9 @@ public class LedgerHandle {
         try {
             doAsyncCloseInternal(cb, ctx, rc);
         } catch (RejectedExecutionException re) {
-            LOG.debug("Failed to close ledger {} : ", ledgerId, re);
+            if (LOG.isDebugEnabled()) {
+                LOG.debug("Failed to close ledger {} : ", ledgerId, re);
+            }
             errorOutPendingAdds(bk.getReturnRc(rc));
             cb.closeComplete(bk.getReturnRc(BKException.Code.InterruptedException), this, ctx);
         }
@@ -524,8 +534,21 @@ public class LedgerHandle {
      */
     public void asyncAddEntry(final byte[] data, final int offset, final int length,
                               final AddCallback cb, final Object ctx) {
+        if (offset < 0 || length < 0
+                || (offset + length) > data.length) {
+            throw new ArrayIndexOutOfBoundsException(
+                    "Invalid values for offset("+offset
+                    +") or length("+length+")");
+        }
+
         PendingAddOp op = new PendingAddOp(LedgerHandle.this, cb, ctx);
-        doAsyncAddEntry(op, data, offset, length, cb, ctx);
+        doAsyncAddEntry(op, Unpooled.wrappedBuffer(data, offset, length), cb, ctx);
+    }
+
+    public void asyncAddEntry(ByteBuf data, final AddCallback cb, final Object ctx) {
+        data.retain();
+        PendingAddOp op = new PendingAddOp(LedgerHandle.this, cb, ctx);
+        doAsyncAddEntry(op, data, cb, ctx);
     }
 
     /**
@@ -540,18 +563,10 @@ public class LedgerHandle {
     void asyncRecoveryAddEntry(final byte[] data, final int offset, final int length,
                                final AddCallback cb, final Object ctx) {
         PendingAddOp op = new PendingAddOp(LedgerHandle.this, cb, ctx).enableRecoveryAdd();
-        doAsyncAddEntry(op, data, offset, length, cb, ctx);
+        doAsyncAddEntry(op, Unpooled.wrappedBuffer(data, offset, length), cb, ctx);
     }
 
-    private void doAsyncAddEntry(final PendingAddOp op, final byte[] data, final int offset, final int length,
-                                 final AddCallback cb, final Object ctx) {
-        if (offset < 0 || length < 0
-                || (offset + length) > data.length) {
-            throw new ArrayIndexOutOfBoundsException(
-                "Invalid values for offset("+offset
-                +") or length("+length+")");
-        }
-
+    private void doAsyncAddEntry(final PendingAddOp op, final ByteBuf data, final AddCallback cb, final Object ctx) {
         if (throttler != null) {
             throttler.acquire();
         }
@@ -569,7 +584,7 @@ public class LedgerHandle {
                 currentLength = 0;
             } else {
                 entryId = ++lastAddPushed;
-                currentLength = addToLength(length);
+                currentLength = addToLength(data.readableBytes());
                 op.setEntryId(entryId);
                 pendingAddOps.add(op);
             }
@@ -601,9 +616,10 @@ public class LedgerHandle {
             bk.mainWorkerPool.submit(new SafeRunnable() {
                 @Override
                 public void safeRun() {
-                    ChannelBuffer toSend = macManager.computeDigestAndPackageForSending(
-                                               entryId, lastAddConfirmed, currentLength, data, offset, length);
-                    op.initiate(toSend, length);
+                    ByteBuf toSend = macManager.computeDigestAndPackageForSending(entryId, lastAddConfirmed,
+                            currentLength, data);
+                    op.initiate(toSend, data.readableBytes());
+                    toSend.release();
                 }
             });
         } catch (RejectedExecutionException e) {
@@ -642,7 +658,9 @@ public class LedgerHandle {
      */
     public void asyncTrim(final long lastEntryId) {
         if (metadata.isClosed()) {
-            LOG.debug("Attempt to trim a closed ledger: {}", ledgerId);
+            if (LOG.isDebugEnabled()) {
+                LOG.debug("Attempt to trim a closed ledger: {}", ledgerId);
+            }
             return;
         }
 
@@ -874,6 +892,7 @@ public class LedgerHandle {
         while ((pendingAddOp = pendingAddOps.peek()) != null
                && blockAddCompletions.get() == 0) {
             if (!pendingAddOp.completed) {
+                LOG.debug("pending add not completed: {}", pendingAddOp);
                 return;
             }
             pendingAddOps.remove();

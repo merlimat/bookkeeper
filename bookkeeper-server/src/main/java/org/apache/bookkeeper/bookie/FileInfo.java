@@ -193,7 +193,9 @@ class FileInfo {
      */
     synchronized public boolean setFenced() throws IOException {
         checkOpen(false);
-        LOG.debug("Try to set fenced state in file info {} : state bits {}.", lf, stateBits);
+        if (LOG.isDebugEnabled()) {
+            LOG.debug("Try to set fenced state in file info {} : state bits {}.", lf, stateBits);
+        }
         if ((stateBits & STATE_FENCED_BIT) != STATE_FENCED_BIT) {
             // not fenced yet
             stateBits |= STATE_FENCED_BIT;

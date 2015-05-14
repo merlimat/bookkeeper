@@ -23,6 +23,8 @@ package org.apache.bookkeeper.bookie;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.fail;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 
 import java.io.File;
 import java.io.IOException;
@@ -45,6 +47,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.junit.Test;
 import org.junit.After;
+
 import static org.junit.Assert.*;
 
 public class BookieJournalTest {
@@ -116,14 +119,14 @@ public class BookieJournalTest {
     /**
      * Generate meta entry with given master key
      */
-    private ByteBuffer generateMetaEntry(long ledgerId, byte[] masterKey) {
+    private ByteBuf generateMetaEntry(long ledgerId, byte[] masterKey) {
         ByteBuffer bb = ByteBuffer.allocate(8 + 8 + 4 + masterKey.length);
         bb.putLong(ledgerId);
         bb.putLong(Bookie.METAENTRY_ID_LEDGER_KEY);
         bb.putInt(masterKey.length);
         bb.put(masterKey);
         bb.flip();
-        return bb;
+        return Unpooled.wrappedBuffer(bb);
     }
 
     private void writeJunkJournal(File journalDir) throws Exception {
@@ -154,21 +157,20 @@ public class BookieJournalTest {
         byte[] data = "JournalTestData".getBytes();
         long lastConfirmed = LedgerHandle.INVALID_ENTRY_ID;
         for (int i = 1; i <= numEntries; i++) {
-            ByteBuffer packet = ClientUtil.generatePacket(1, i, lastConfirmed, i*data.length, data).toByteBuffer();
+            ByteBuf packet = ClientUtil.generatePacket(1, i, lastConfirmed, i*data.length, data);
             lastConfirmed = i;
             ByteBuffer lenBuff = ByteBuffer.allocate(4);
-            lenBuff.putInt(packet.remaining());
+            lenBuff.putInt(packet.readableBytes());
             lenBuff.flip();
 
             fc.write(lenBuff);
-            fc.write(packet);
+            fc.write(packet.nioBuffer());
+            packet.release();
         }
     }
 
     private static void moveToPosition(JournalChannel jc, long pos) throws IOException {
         jc.fc.position(pos);
-        jc.bc.position = pos;
-        jc.bc.writeBufferStartPosition.set(pos);
     }
 
     private static void updateJournalVersion(JournalChannel jc, int journalVersion) throws IOException {
@@ -191,22 +193,22 @@ public class BookieJournalTest {
 
         moveToPosition(jc, JournalChannel.VERSION_HEADER_SIZE);
 
-        BufferedChannel bc = jc.getBufferedChannel();
+        FileChannel bc = jc.getChannel();
 
         byte[] data = new byte[1024];
         Arrays.fill(data, (byte)'X');
         long lastConfirmed = LedgerHandle.INVALID_ENTRY_ID;
         for (int i = 1; i <= numEntries; i++) {
-            ByteBuffer packet = ClientUtil.generatePacket(1, i, lastConfirmed, i*data.length, data).toByteBuffer();
+            ByteBuf packet = ClientUtil.generatePacket(1, i, lastConfirmed, i*data.length, data);
             lastConfirmed = i;
             ByteBuffer lenBuff = ByteBuffer.allocate(4);
-            lenBuff.putInt(packet.remaining());
+            lenBuff.putInt(packet.readableBytes());
             lenBuff.flip();
 
             bc.write(lenBuff);
-            bc.write(packet);
+            bc.write(packet.nioBuffer());
+            packet.release();
         }
-        bc.flush(true);
 
         updateJournalVersion(jc, JournalChannel.V2);
 
@@ -219,27 +221,27 @@ public class BookieJournalTest {
 
         moveToPosition(jc, JournalChannel.VERSION_HEADER_SIZE);
 
-        BufferedChannel bc = jc.getBufferedChannel();
+        FileChannel bc = jc.getChannel();
 
         byte[] data = new byte[1024];
         Arrays.fill(data, (byte)'X');
         long lastConfirmed = LedgerHandle.INVALID_ENTRY_ID;
         for (int i = 0; i <= numEntries; i++) {
-            ByteBuffer packet;
+            ByteBuf packet;
             if (i == 0) {
                 packet = generateMetaEntry(1, masterKey);
             } else {
-                packet = ClientUtil.generatePacket(1, i, lastConfirmed, i*data.length, data).toByteBuffer();
+                packet = ClientUtil.generatePacket(1, i, lastConfirmed, i*data.length, data);
             }
             lastConfirmed = i;
             ByteBuffer lenBuff = ByteBuffer.allocate(4);
-            lenBuff.putInt(packet.remaining());
+            lenBuff.putInt(packet.readableBytes());
             lenBuff.flip();
 
             bc.write(lenBuff);
-            bc.write(packet);
+            bc.write(packet.nioBuffer());
+            packet.release();
         }
-        bc.flush(true);
 
         updateJournalVersion(jc, JournalChannel.V3);
 
@@ -252,24 +254,25 @@ public class BookieJournalTest {
 
         moveToPosition(jc, JournalChannel.VERSION_HEADER_SIZE);
 
-        BufferedChannel bc = jc.getBufferedChannel();
+        FileChannel bc = jc.getChannel();
 
         byte[] data = new byte[1024];
         Arrays.fill(data, (byte)'X');
         long lastConfirmed = LedgerHandle.INVALID_ENTRY_ID;
         for (int i = 0; i <= numEntries; i++) {
-            ByteBuffer packet;
+            ByteBuf packet;
             if (i == 0) {
                 packet = generateMetaEntry(1, masterKey);
             } else {
-                packet = ClientUtil.generatePacket(1, i, lastConfirmed, i * data.length, data).toByteBuffer();
+                packet = ClientUtil.generatePacket(1, i, lastConfirmed, i * data.length, data);
             }
             lastConfirmed = i;
             ByteBuffer lenBuff = ByteBuffer.allocate(4);
-            lenBuff.putInt(packet.remaining());
+            lenBuff.putInt(packet.readableBytes());
             lenBuff.flip();
             bc.write(lenBuff);
-            bc.write(packet);
+            bc.write(packet.nioBuffer());
+            packet.release();
         }
         // write fence key
         ByteBuffer packet = generateFenceEntry(1);
@@ -278,7 +281,6 @@ public class BookieJournalTest {
         lenBuf.flip();
         bc.write(lenBuf);
         bc.write(packet);
-        bc.flush(true);
         updateJournalVersion(jc, JournalChannel.V4);
         return jc;
     }
@@ -287,7 +289,7 @@ public class BookieJournalTest {
         long logId = System.currentTimeMillis();
         JournalChannel jc = new JournalChannel(journalDir, logId);
 
-        BufferedChannel bc = jc.getBufferedChannel();
+        FileChannel bc = jc.getChannel();
 
         ByteBuffer paddingBuff = ByteBuffer.allocateDirect(2 * JournalChannel.SECTOR_SIZE);
         ZeroBuffer.put(paddingBuff);
@@ -296,20 +298,20 @@ public class BookieJournalTest {
         long lastConfirmed = LedgerHandle.INVALID_ENTRY_ID;
         long length = 0;
         for (int i = 0; i <= numEntries; i++) {
-            ByteBuffer packet;
+            ByteBuf packet;
             if (i == 0) {
                 packet = generateMetaEntry(1, masterKey);
             } else {
-                packet = ClientUtil.generatePacket(1, i, lastConfirmed,
-                        length, data, 0, i).toByteBuffer();
+                packet = ClientUtil.generatePacket(1, i, lastConfirmed, length, data, 0, i);
             }
             lastConfirmed = i;
             length += i;
             ByteBuffer lenBuff = ByteBuffer.allocate(4);
-            lenBuff.putInt(packet.remaining());
+            lenBuff.putInt(packet.readableBytes());
             lenBuff.flip();
             bc.write(lenBuff);
-            bc.write(packet);
+            bc.write(packet.nioBuffer());
+            packet.release();
             Journal.writePaddingBytes(jc, paddingBuff, JournalChannel.SECTOR_SIZE);
         }
         // write fence key
@@ -320,7 +322,6 @@ public class BookieJournalTest {
         bc.write(lenBuf);
         bc.write(packet);
         Journal.writePaddingBytes(jc, paddingBuff, JournalChannel.SECTOR_SIZE);
-        bc.flush(true);
         updateJournalVersion(jc, JournalChannel.V5);
         return jc;
     }
@@ -515,8 +516,7 @@ public class BookieJournalTest {
         Bookie.checkDirectoryStructure(Bookie.getCurrentDirectory(ledgerDir));
 
         JournalChannel jc = writeV2Journal(Bookie.getCurrentDirectory(journalDir), 0);
-        jc.getBufferedChannel().write(ByteBuffer.wrap("JunkJunkJunk".getBytes()));
-        jc.getBufferedChannel().flush(true);
+        jc.getChannel().write(ByteBuffer.wrap("JunkJunkJunk".getBytes()));
 
         writeIndexFileForLedger(ledgerDir, 1, "testPasswd".getBytes());
 
@@ -553,7 +553,7 @@ public class BookieJournalTest {
                 Bookie.getCurrentDirectory(journalDir), 100);
         ByteBuffer zeros = ByteBuffer.allocate(2048);
 
-        jc.fc.position(jc.getBufferedChannel().position() - 0x429);
+        jc.fc.position(jc.getChannel().position() - 0x429);
         jc.fc.write(zeros);
         jc.fc.force(false);
 
@@ -597,7 +597,7 @@ public class BookieJournalTest {
                 Bookie.getCurrentDirectory(journalDir), 100);
         ByteBuffer zeros = ByteBuffer.allocate(2048);
 
-        jc.fc.position(jc.getBufferedChannel().position() - 0x300);
+        jc.fc.position(jc.getChannel().position() - 0x300);
         jc.fc.write(zeros);
         jc.fc.force(false);
 
@@ -614,15 +614,15 @@ public class BookieJournalTest {
         b.readEntry(1, 99);
 
         // still able to read last entry, but it's junk
-        ByteBuffer buf = b.readEntry(1, 100);
-        assertEquals("Ledger Id is wrong", buf.getLong(), 1);
-        assertEquals("Entry Id is wrong", buf.getLong(), 100);
-        assertEquals("Last confirmed is wrong", buf.getLong(), 99);
-        assertEquals("Length is wrong", buf.getLong(), 100*1024);
-        buf.getLong(); // skip checksum
+        ByteBuf buf = b.readEntry(1, 100);
+        assertEquals("Ledger Id is wrong", buf.readLong(), 1);
+        assertEquals("Entry Id is wrong", buf.readLong(), 100);
+        assertEquals("Last confirmed is wrong", buf.readLong(), 99);
+        assertEquals("Length is wrong", buf.readLong(), 100*1024);
+        buf.readLong(); // skip checksum
         boolean allX = true;
         for (int i = 0; i < 1024; i++) {
-            byte x = buf.get();
+            byte x = buf.readByte();
             allX = allX && x == (byte)'X';
         }
         assertFalse("Some of buffer should have been zeroed", allX);

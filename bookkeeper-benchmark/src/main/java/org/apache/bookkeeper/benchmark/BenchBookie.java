@@ -20,7 +20,6 @@
 package org.apache.bookkeeper.benchmark;
 
 import java.io.IOException;
-import java.util.concurrent.Executors;
 
 import org.apache.bookkeeper.net.BookieSocketAddress;
 import org.apache.bookkeeper.proto.BookieClient;
@@ -32,20 +31,20 @@ import org.apache.bookkeeper.client.BKException;
 import org.apache.bookkeeper.client.LedgerHandle;
 import org.apache.bookkeeper.conf.ClientConfiguration;
 import org.apache.commons.cli.HelpFormatter;
-import org.apache.commons.cli.Option;
 import org.apache.commons.cli.Options;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
 import org.apache.commons.cli.PosixParser;
 import org.apache.commons.cli.ParseException;
 import org.apache.zookeeper.KeeperException;
-import org.jboss.netty.buffer.ChannelBuffer;
-import org.jboss.netty.buffer.ChannelBuffers;
-import org.jboss.netty.channel.socket.ClientSocketChannelFactory;
-import org.jboss.netty.channel.socket.nio.NioClientSocketChannelFactory;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
+import io.netty.channel.EventLoopGroup;
+import io.netty.channel.nio.NioEventLoopGroup;
 
 public class BenchBookie {
     static final Logger LOG = LoggerFactory.getLogger(BenchBookie.class);
@@ -137,15 +136,11 @@ public class BenchBookie {
         int size = Integer.valueOf(cmd.getOptionValue("size", "1024"));
         String servers = cmd.getOptionValue("zookeeper", "localhost:2181");
 
-
-
-        ClientSocketChannelFactory channelFactory
-            = new NioClientSocketChannelFactory(Executors.newCachedThreadPool(), Executors
-                                                .newCachedThreadPool());
+        EventLoopGroup eventLoop = new NioEventLoopGroup();
         OrderedSafeExecutor executor = new OrderedSafeExecutor(1, "BenchBookieClientScheduler");
 
         ClientConfiguration conf = new ClientConfiguration();
-        BookieClient bc = new BookieClient(conf, channelFactory, executor);
+        BookieClient bc = new BookieClient(conf, eventLoop, executor);
         LatencyCallback lc = new LatencyCallback();
 
         ThroughputCallback tc = new ThroughputCallback();
@@ -153,7 +148,7 @@ public class BenchBookie {
 
         long ledger = getValidLedgerId(servers);
         for(long entry = 0; entry < warmUpCount; entry++) {
-            ChannelBuffer toSend = ChannelBuffers.buffer(size);
+            ByteBuf toSend = Unpooled.buffer(size);
             toSend.resetReaderIndex();
             toSend.resetWriterIndex();
             toSend.writeLong(ledger);
@@ -170,7 +165,7 @@ public class BenchBookie {
         int entryCount = 5000;
         long startTime = System.nanoTime();
         for(long entry = 0; entry < entryCount; entry++) {
-            ChannelBuffer toSend = ChannelBuffers.buffer(size);
+            ByteBuf toSend = Unpooled.buffer(size);
             toSend.resetReaderIndex();
             toSend.resetWriterIndex();
             toSend.writeLong(ledger);
@@ -191,7 +186,7 @@ public class BenchBookie {
         startTime = System.currentTimeMillis();
         tc = new ThroughputCallback();
         for(long entry = 0; entry < entryCount; entry++) {
-            ChannelBuffer toSend = ChannelBuffers.buffer(size);
+            ByteBuf toSend = Unpooled.buffer(size);
             toSend.resetReaderIndex();
             toSend.resetWriterIndex();
             toSend.writeLong(ledger);
@@ -205,7 +200,7 @@ public class BenchBookie {
         LOG.info("Throughput: " + ((long)entryCount)*1000/(endTime-startTime));
 
         bc.close();
-        channelFactory.releaseExternalResources();
+        eventLoop.shutdownGracefully();
         executor.shutdown();
     }
 

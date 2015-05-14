@@ -20,6 +20,8 @@
  */
 package org.apache.bookkeeper.proto;
 
+import io.netty.channel.Channel;
+
 import java.util.concurrent.TimeUnit;
 
 import org.apache.bookkeeper.proto.BookkeeperProtocol.BKPacketHeader;
@@ -28,9 +30,9 @@ import org.apache.bookkeeper.proto.BookkeeperProtocol.Request;
 import org.apache.bookkeeper.proto.BookkeeperProtocol.StatusCode;
 import org.apache.bookkeeper.stats.OpStatsLogger;
 import org.apache.bookkeeper.util.MathUtils;
-import org.jboss.netty.channel.Channel;
+import org.apache.bookkeeper.util.SafeRunnable;
 
-public abstract class PacketProcessorBaseV3 {
+public abstract class PacketProcessorBaseV3 extends SafeRunnable {
 
     final Request request;
     final Channel channel;
@@ -46,7 +48,7 @@ public abstract class PacketProcessorBaseV3 {
     }
 
     protected void sendResponse(StatusCode code, Object response, OpStatsLogger statsLogger) {
-        channel.write(response);
+        channel.writeAndFlush(response);
         if (StatusCode.EOK == code) {
             statsLogger.registerSuccessfulEvent(MathUtils.elapsedNanos(enqueueNanos), TimeUnit.NANOSECONDS);
         } else {

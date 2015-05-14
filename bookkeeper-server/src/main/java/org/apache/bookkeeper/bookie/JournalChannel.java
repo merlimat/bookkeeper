@@ -46,7 +46,6 @@ class JournalChannel implements Closeable {
     final RandomAccessFile randomAccessFile;
     final int fd;
     final FileChannel fc;
-    final BufferedChannel bc;
     final int formatVersion;
     long nextPrealloc = 0;
 
@@ -161,14 +160,12 @@ class JournalChannel implements Closeable {
             bb.clear();
             fc.write(bb);
 
-            bc = new BufferedChannel(fc, writeBufferSize);
             forceWrite(true);
             nextPrealloc = this.preAllocSize;
             fc.write(zeros, nextPrealloc - journalAlignSize);
         } else {  // open an existing file
             randomAccessFile = new RandomAccessFile(fn, "r");
             fc = randomAccessFile.getChannel();
-            bc = null; // readonly
 
             ByteBuffer bb = ByteBuffer.allocate(VERSION_HEADER_SIZE);
             int c = fc.read(bb);
@@ -222,15 +219,12 @@ class JournalChannel implements Closeable {
         return formatVersion;
     }
 
-    BufferedChannel getBufferedChannel() throws IOException {
-        if (bc == null) {
-            throw new IOException("Read only journal channel");
-        }
-        return bc;
+    FileChannel getChannel() throws IOException {
+        return fc;
     }
 
     void preAllocIfNeeded(long size) throws IOException {
-        if (bc.position() + size > nextPrealloc) {
+        if (fc.position() + size > nextPrealloc) {
             nextPrealloc += preAllocSize;
             zeros.clear();
             fc.write(zeros, nextPrealloc - journalAlignSize);
@@ -250,7 +244,10 @@ class JournalChannel implements Closeable {
         if (LOG.isDebugEnabled()) {
             LOG.debug("Journal ForceWrite");
         }
-        long newForceWritePosition = bc.forceWrite(forceMetadata);
+        
+        long newForceWritePosition = fc.position();
+        fc.force(forceMetadata);
+
         //
         // For POSIX_FADV_DONTNEED, we want to drop from the beginning
         // of the file to a position prior to the current position.

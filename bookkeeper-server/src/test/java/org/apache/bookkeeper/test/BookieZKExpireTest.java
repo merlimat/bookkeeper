@@ -99,7 +99,7 @@ public class BookieZKExpireTest extends BookKeeperClusterTestCase {
             }
 
             // allow watcher thread to run
-            Thread.sleep(1000);
+            Thread.sleep(3000);
 
             assertTrue("Bookie should not have shutdown on losing zk session", server.isBookieRunning());
             assertTrue("Bookie Server should not have shutdown on losing zk session", server.isRunning());

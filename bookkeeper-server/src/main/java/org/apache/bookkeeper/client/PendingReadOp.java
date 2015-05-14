@@ -20,6 +20,8 @@
  */
 package org.apache.bookkeeper.client;
 
+import io.netty.buffer.ByteBuf;
+
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.Enumeration;
@@ -41,8 +43,6 @@ import org.apache.bookkeeper.net.BookieSocketAddress;
 import org.apache.bookkeeper.proto.BookkeeperInternalCallbacks.ReadEntryCallback;
 import org.apache.bookkeeper.stats.OpStatsLogger;
 import org.apache.bookkeeper.util.MathUtils;
-import org.jboss.netty.buffer.ChannelBuffer;
-import org.jboss.netty.buffer.ChannelBufferInputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -200,11 +200,15 @@ class PendingReadOp implements Enumeration<LedgerEntry>, ReadEntryCallback {
             if (BKException.Code.NoSuchEntryException == rc ||
                 BKException.Code.NoSuchLedgerExistsException == rc) {
                 ++numMissedEntryReads;
-                LOG.debug("No such entry found on bookie.  L{} E{} bookie: {}",
-                        new Object[] { lh.ledgerId, entryId, host });
+                if (LOG.isDebugEnabled()) {
+                    LOG.debug("No such entry found on bookie.  L{} E{} bookie: {}",
+                            new Object[] { lh.ledgerId, entryId, host });
+                }
             } else {
-                LOG.debug(errMsg + " while reading L{} E{} from bookie: {}",
-                          new Object[] { lh.ledgerId, entryId, host });
+                if (LOG.isDebugEnabled()) {
+                    LOG.debug(errMsg + " while reading L{} E{} from bookie: {}",
+                            new Object[] { lh.ledgerId, entryId, host });
+                }
             }
 
             int replica = getReplicaIndex(host);
@@ -221,25 +225,26 @@ class PendingReadOp implements Enumeration<LedgerEntry>, ReadEntryCallback {
 
         // return true if we managed to complete the entry
         // return false if the read entry is not complete or it is already completed before
-        boolean complete(BookieSocketAddress host, final ChannelBuffer buffer) {
-            ChannelBufferInputStream is;
+        boolean complete(BookieSocketAddress host, final ByteBuf buffer) {
+            ByteBuf content;
             try {
-                is = lh.macManager.verifyDigestAndReturnData(entryId, buffer);
+                content = lh.macManager.verifyDigestAndReturnData(entryId, buffer);
             } catch (BKDigestMatchException e) {
                 logErrorAndReattemptRead(host, "Mac mismatch", BKException.Code.DigestMatchException);
+                buffer.release();
                 return false;
             }
 
             if (!complete.getAndSet(true)) {
-                entryDataStream = is;
-
                 /*
                  * The length is a long and it is the last field of the metadata of an entry.
                  * Consequently, we have to subtract 8 from METADATA_LENGTH to get the length.
                  */
                 length = buffer.getLong(DigestManager.METADATA_LENGTH - 8);
+                data = content;
                 return true;
             } else {
+                buffer.release();
                 return false;
             }
         }
@@ -305,8 +310,10 @@ class PendingReadOp implements Enumeration<LedgerEntry>, ReadEntryCallback {
                         }
                     }
                     if (x > 0) {
-                        LOG.debug("Send {} speculative reads for ledger {} ({}, {}). Hosts heard are {}.",
-                                  new Object[] { x, lh.getId(), startEntryId, endEntryId, heardFromHosts });
+                        if (LOG.isDebugEnabled()) {
+                            LOG.debug("Send {} speculative reads for ledger {} ({}, {}). Hosts heard are {}.",
+                                    new Object[] { x, lh.getId(), startEntryId, endEntryId, heardFromHosts });
+                        }
                     }
                 }
             };
@@ -352,7 +359,7 @@ class PendingReadOp implements Enumeration<LedgerEntry>, ReadEntryCallback {
     }
 
     @Override
-    public void readEntryComplete(int rc, long ledgerId, final long entryId, final ChannelBuffer buffer, Object ctx) {
+    public void readEntryComplete(int rc, long ledgerId, final long entryId, final ByteBuf buffer, Object ctx) {
         final ReadContext rctx = (ReadContext)ctx;
         final LedgerEntryRequest entry = rctx.entry;
 

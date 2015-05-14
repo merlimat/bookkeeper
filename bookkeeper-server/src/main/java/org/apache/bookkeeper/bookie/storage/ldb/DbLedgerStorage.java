@@ -2,10 +2,9 @@ package org.apache.bookkeeper.bookie.storage.ldb;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import io.netty.buffer.ByteBuf;
-import io.netty.buffer.PooledByteBufAllocator;
+import io.netty.buffer.Unpooled;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.Map.Entry;
 import java.util.SortedMap;
@@ -54,16 +53,14 @@ public class DbLedgerStorage implements CompactableLedgerStorage {
 
     private GarbageCollectorThread gcThread;
 
-    private final PooledByteBufAllocator allocator = new PooledByteBufAllocator(false);
-
     // Write cache where all new entries are inserted into
-    private EntryCache writeCache = new EntryCache(allocator);
+    private EntryCache writeCache = new EntryCache();
 
     // Write cache that is used to swap with writeCache during flushes
-    private EntryCache writeCacheBeingFlushed = new EntryCache(allocator);
+    private EntryCache writeCacheBeingFlushed = new EntryCache();
 
     // Cache where we insert entries for speculative reading
-    private final EntryCache readAheadCache = new EntryCache(allocator);
+    private final EntryCache readCache = new EntryCache();
 
     private final AtomicLong writeCacheSizeTrimmed = new AtomicLong(0);
     private final ReentrantReadWriteLock writeCacheMutex = new ReentrantReadWriteLock();
@@ -72,8 +69,8 @@ public class DbLedgerStorage implements CompactableLedgerStorage {
     private final RateLimiter readRateLimiter = RateLimiter.create(100);
     private final AtomicBoolean isThrottlingRequests = new AtomicBoolean(false);
 
-    private final ExecutorService executor = Executors.newCachedThreadPool(new ThreadFactoryBuilder().setNameFormat(
-            "db-storage-%s").build());
+    private final ExecutorService executor = Executors
+            .newCachedThreadPool(new ThreadFactoryBuilder().setNameFormat("db-storage-%s").build());
 
     static final String WRITE_CACHE_MAX_SIZE_MB = "dbStorage_writeCacheMaxSizeMb";
     static final String WRITE_CACHE_CHUNK_SIZE_MB = "dbStorage_writeCacheChunkSizeMb";
@@ -82,7 +79,9 @@ public class DbLedgerStorage implements CompactableLedgerStorage {
     static final String TRIM_ENABLED = "dbStorage_trimEnabled";
 
     private static final long DEFAULT_WRITE_CACHE_MAX_SIZE_MB = 16;
-    private static final long DEFAULT_READ_AHEAD_CACHE_MAX_SIZE_MB = 16;
+    private static final long DEFAULT_READ_CACHE_MAX_SIZE_MB = 16;
+    private static final float READ_CACHE_FULL_THRESHOLD = 0.80f;
+
     private static final int DEFAULT_READ_AHEAD_CACHE_BATCH_SIZE = 100;
     private static final int MB = 1024 * 1024;
 
@@ -91,7 +90,8 @@ public class DbLedgerStorage implements CompactableLedgerStorage {
     private CheckpointSource checkpointSource = null;
     private Checkpoint lastCheckpoint = Checkpoint.MIN;
 
-    private long readAheadCacheMaxSize;
+    private long readCacheMaxSize;
+    private long maxReadCacheSizeBelowThreshold;
     private int readAheadCacheBatchSize;
     private boolean trimEnabled;
 
@@ -108,10 +108,9 @@ public class DbLedgerStorage implements CompactableLedgerStorage {
     private OpStatsLogger trimStats;
 
     @Override
-    public void initialize(ServerConfiguration conf,
-            GarbageCollectorThread.LedgerManagerProvider ledgerManagerProvider, LedgerDirsManager ledgerDirsManager,
-            LedgerDirsManager indexDirsManager, CheckpointSource checkpointSource, StatsLogger statsLogger)
-            throws IOException {
+    public void initialize(ServerConfiguration conf, GarbageCollectorThread.LedgerManagerProvider ledgerManagerProvider,
+            LedgerDirsManager ledgerDirsManager, LedgerDirsManager indexDirsManager, CheckpointSource checkpointSource,
+            StatsLogger statsLogger) throws IOException {
         checkArgument(ledgerDirsManager.getAllLedgerDirs().size() == 1,
                 "Db implementation only allows for one storage dir");
 
@@ -121,14 +120,17 @@ public class DbLedgerStorage implements CompactableLedgerStorage {
 
         this.checkpointSource = checkpointSource;
 
-        readAheadCacheMaxSize = conf.getLong(READ_AHEAD_CACHE_MAX_SIZE_MB, DEFAULT_READ_AHEAD_CACHE_MAX_SIZE_MB) * MB;
+        readCacheMaxSize = conf.getLong(READ_AHEAD_CACHE_MAX_SIZE_MB, DEFAULT_READ_CACHE_MAX_SIZE_MB) * MB;
+        maxReadCacheSizeBelowThreshold = (long) (readCacheMaxSize * READ_CACHE_FULL_THRESHOLD);
         readAheadCacheBatchSize = conf.getInt(READ_AHEAD_CACHE_BATCH_SIZE, DEFAULT_READ_AHEAD_CACHE_BATCH_SIZE);
 
         trimEnabled = conf.getBoolean(TRIM_ENABLED, false);
         this.stats = statsLogger;
 
-        log.info("Started Db Ledger Storage - Write cache size: {} Mb - Trim enabled: {}",
-                writeCacheMaxSize / 1024 / 1024, trimEnabled);
+        log.info(
+                "Started Db Ledger Storage - Write cache size: {} Mb - Trim enabled: {} -- Read Cache: {} Mb -- Read Cache threshold: {} Mb",
+                new Object[] { writeCacheMaxSize / MB, trimEnabled, readCacheMaxSize / MB,
+                        maxReadCacheSizeBelowThreshold / MB });
 
         ledgerIndex = new LedgerMetadataIndex(baseDir, stats);
         entryLocationIndex = new EntryLocationIndex(baseDir, stats);
@@ -170,7 +172,7 @@ public class DbLedgerStorage implements CompactableLedgerStorage {
 
             @Override
             public Long getSample() {
-                return readAheadCache.size();
+                return readCache.size();
             }
         });
         stats.registerGauge("read-cache-count", new Gauge<Long>() {
@@ -181,7 +183,7 @@ public class DbLedgerStorage implements CompactableLedgerStorage {
 
             @Override
             public Long getSample() {
-                return readAheadCache.count();
+                return readCache.count();
             }
         });
         stats.registerGauge("trim-size", new Gauge<Long>() {
@@ -225,7 +227,7 @@ public class DbLedgerStorage implements CompactableLedgerStorage {
 
             writeCache.clear();
             writeCacheBeingFlushed.clear();
-            readAheadCache.clear();
+            readCache.clear();
 
             executor.shutdown();
 
@@ -238,7 +240,9 @@ public class DbLedgerStorage implements CompactableLedgerStorage {
     public boolean ledgerExists(long ledgerId) throws IOException {
         try {
             LedgerData ledgerData = ledgerIndex.get(ledgerId);
-            log.debug("Ledger exists. ledger: {} : {}", ledgerId, ledgerData.getExists());
+            if (log.isDebugEnabled()) {
+                log.debug("Ledger exists. ledger: {} : {}", ledgerId, ledgerData.getExists());
+            }
             return ledgerData.getExists();
         } catch (Bookie.NoLedgerException nle) {
             // ledger does not exist
@@ -248,37 +252,48 @@ public class DbLedgerStorage implements CompactableLedgerStorage {
 
     @Override
     public boolean isFenced(long ledgerId) throws IOException {
-        log.debug("isFenced. ledger: {}", ledgerId);
+        if (log.isDebugEnabled()) {
+            log.debug("isFenced. ledger: {}", ledgerId);
+        }
         return ledgerIndex.get(ledgerId).getFenced();
     }
 
     @Override
     public boolean setFenced(long ledgerId) throws IOException {
-        log.debug("Set fenced. ledger: {}", ledgerId);
+        if (log.isDebugEnabled()) {
+            log.debug("Set fenced. ledger: {}", ledgerId);
+        }
         return ledgerIndex.setFenced(ledgerId);
     }
 
     @Override
     public void setMasterKey(long ledgerId, byte[] masterKey) throws IOException {
-        log.debug("Set master key. ledger: {}", ledgerId);
+        if (log.isDebugEnabled()) {
+            log.debug("Set master key. ledger: {}", ledgerId);
+        }
         ledgerIndex.setMasterKey(ledgerId, masterKey);
     }
 
     @Override
     public byte[] readMasterKey(long ledgerId) throws IOException, BookieException {
-        log.debug("Read master key. ledger: {}", ledgerId);
+        if (log.isDebugEnabled()) {
+            log.debug("Read master key. ledger: {}", ledgerId);
+        }
         return ledgerIndex.get(ledgerId).getMasterKey().toByteArray();
     }
 
     @Override
-    public long addEntry(ByteBuffer entry) throws IOException {
+    public long addEntry(ByteBuf entry) throws IOException {
         long startTime = MathUtils.nowInNano();
 
-        long ledgerId = entry.getLong();
-        long entryId = entry.getLong();
-        entry.rewind();
+        long ledgerId = entry.readLong();
+        long entryId = entry.readLong();
+        entry.resetReaderIndex();
 
-        log.debug("Add entry. {}@{}", ledgerId, entryId);
+        if (log.isDebugEnabled()) {
+            log.debug("Add entry. {}@{}", ledgerId, entryId);
+        }
+
         if (isThrottlingRequests.get()) {
             writeRateLimiter.acquire();
         }
@@ -309,9 +324,12 @@ public class DbLedgerStorage implements CompactableLedgerStorage {
     }
 
     @Override
-    public ByteBuffer getEntry(long ledgerId, long entryId) throws IOException {
+    public ByteBuf getEntry(long ledgerId, long entryId) throws IOException {
         long startTime = MathUtils.nowInNano();
-        log.debug("Get Entry: {}@{}", ledgerId, entryId);
+        if (log.isDebugEnabled()) {
+            log.debug("Get Entry: {}@{}", ledgerId, entryId);
+        }
+
         if (entryId == BookieProtocol.LAST_ADD_CONFIRMED) {
             return getLastEntry(ledgerId);
         }
@@ -319,7 +337,7 @@ public class DbLedgerStorage implements CompactableLedgerStorage {
         writeCacheMutex.readLock().lock();
         try {
             // First try to read from the write cache of recent entries
-            ByteBuffer entry = writeCache.get(ledgerId, entryId);
+            ByteBuf entry = writeCache.get(ledgerId, entryId);
             if (entry != null) {
                 recordSuccessfulEvent(readCacheHitStats, startTime);
                 recordSuccessfulEvent(readEntryStats, startTime);
@@ -338,11 +356,11 @@ public class DbLedgerStorage implements CompactableLedgerStorage {
         }
 
         // Try reading from read-ahead cache
-        ByteBuffer entry = readAheadCache.get(ledgerId, entryId);
+        ByteBuf entry = readCache.get(ledgerId, entryId);
         if (entry != null) {
             recordSuccessfulEvent(readCacheHitStats, startTime);
             recordSuccessfulEvent(readEntryStats, startTime);
-            readAheadCache.invalidate(ledgerId, entryId);
+            readCache.invalidate(ledgerId, entryId);
             return entry;
         }
 
@@ -355,15 +373,14 @@ public class DbLedgerStorage implements CompactableLedgerStorage {
         try {
             LedgerIndexPage ledgerIndexPage = entryLocationIndex.getLedgerIndexPage(ledgerId, entryId);
             long entryLocation = ledgerIndexPage.getPosition(entryId);
-            byte[] content = entryLogger.readEntry(ledgerId, entryId, entryLocation);
+            ByteBuf content = entryLogger.readEntry(ledgerId, entryId, entryLocation);
 
             // Try to read more entries
             fillReadAheadCache(ledgerIndexPage, ledgerId, entryId + 1);
 
             recordSuccessfulEvent(readCacheMissStats, startTime);
             recordSuccessfulEvent(readEntryStats, startTime);
-
-            return ByteBuffer.wrap(content);
+            return content;
         } catch (NoEntryException e) {
             recordFailedEvent(readEntryStats, startTime);
 
@@ -378,6 +395,8 @@ public class DbLedgerStorage implements CompactableLedgerStorage {
         }
     }
 
+    private final RateLimiter readAheadCacheLimiter = RateLimiter.create(1000);
+
     private void fillReadAheadCache(LedgerIndexPage ledgerIndexPage, long ledgerId, long entryId) {
         try {
             long lastEntryInPage = ledgerIndexPage.getLastEntry();
@@ -385,7 +404,12 @@ public class DbLedgerStorage implements CompactableLedgerStorage {
             long size = 0;
 
             while (count < readAheadCacheBatchSize && entryId <= lastEntryInPage
-                    && readAheadCache.size() < readAheadCacheMaxSize) {
+                    && readCache.size() < readCacheMaxSize) {
+                if (!readAheadCacheLimiter.tryAcquire(0, TimeUnit.NANOSECONDS)) {
+                    // Giving up
+                    return;
+                }
+
                 long entryLocation = ledgerIndexPage.getPosition(entryId);
                 if (entryLocation == 0L) {
                     // Skip entry since it's not stored on this bookie
@@ -393,12 +417,13 @@ public class DbLedgerStorage implements CompactableLedgerStorage {
                     continue;
                 }
 
-                ByteBuffer entry = ByteBuffer.wrap(entryLogger.readEntry(ledgerId, entryId, entryLocation));
+                ByteBuf content = entryLogger.readEntry(ledgerId, entryId, entryLocation);
 
-                readAheadCache.put(ledgerId, entryId, entry);
+                readCache.put(ledgerId, entryId, content);
                 entryId++;
                 count++;
-                size += entry.remaining();
+                size += content.readableBytes();
+                content.release();
             }
 
             readAheadBatchCountStats.registerSuccessfulValue(count);
@@ -410,20 +435,22 @@ public class DbLedgerStorage implements CompactableLedgerStorage {
         }
     }
 
-    public ByteBuffer getLastEntry(long ledgerId) throws IOException {
+    public ByteBuf getLastEntry(long ledgerId) throws IOException {
         long startTime = MathUtils.nowInNano();
 
         writeCacheMutex.readLock().lock();
         try {
             // First try to read from the write cache of recent entries
-            ByteBuffer entry = writeCache.getLastEntry(ledgerId);
+            ByteBuf entry = writeCache.getLastEntry(ledgerId);
             if (entry != null) {
                 if (log.isDebugEnabled()) {
-                    long foundLedgerId = entry.getLong(); // ledgedId
-                    long entryId = entry.getLong();
-                    entry.rewind();
-                    log.debug("Found last entry for ledger {} in write cache: {}@{}", new Object[] { ledgerId,
-                            foundLedgerId, entryId });
+                    long foundLedgerId = entry.readLong(); // ledgedId
+                    long entryId = entry.readLong();
+                    entry.resetReaderIndex();
+                    if (log.isDebugEnabled()) {
+                        log.debug("Found last entry for ledger {} in write cache: {}@{}",
+                                new Object[] { ledgerId, foundLedgerId, entryId });
+                    }
                 }
 
                 recordSuccessfulEvent(readCacheHitStats, startTime);
@@ -435,10 +462,12 @@ public class DbLedgerStorage implements CompactableLedgerStorage {
             entry = writeCacheBeingFlushed.getLastEntry(ledgerId);
             if (entry != null) {
                 if (log.isDebugEnabled()) {
-                    entry.getLong(); // ledgedId
-                    long entryId = entry.getLong();
-                    entry.rewind();
-                    log.debug("Found last entry for ledger {} in write cache being flushed: {}", ledgerId, entryId);
+                    entry.readLong(); // ledgedId
+                    long entryId = entry.readLong();
+                    entry.resetReaderIndex();
+                    if (log.isDebugEnabled()) {
+                        log.debug("Found last entry for ledger {} in write cache being flushed: {}", ledgerId, entryId);
+                    }
                 }
 
                 recordSuccessfulEvent(readCacheHitStats, startTime);
@@ -451,14 +480,16 @@ public class DbLedgerStorage implements CompactableLedgerStorage {
 
         // Search the last entry in storage
         long lastEntryId = entryLocationIndex.getLastEntryInLedger(ledgerId);
-        log.debug("Found last entry for ledger {} in db: {}", ledgerId, lastEntryId);
+        if (log.isDebugEnabled()) {
+            log.debug("Found last entry for ledger {} in db: {}", ledgerId, lastEntryId);
+        }
 
         long entryLocation = entryLocationIndex.getLocation(ledgerId, lastEntryId);
-        byte[] content = entryLogger.readEntry(ledgerId, lastEntryId, entryLocation);
+        ByteBuf content = entryLogger.readEntry(ledgerId, lastEntryId, entryLocation);
 
         recordSuccessfulEvent(readCacheMissStats, startTime);
         recordSuccessfulEvent(readEntryStats, startTime);
-        return ByteBuffer.wrap(content);
+        return content;
     }
 
     @VisibleForTesting
@@ -501,8 +532,10 @@ public class DbLedgerStorage implements CompactableLedgerStorage {
         }
 
         long sizeToFlush = writeCacheBeingFlushed.size();
-        log.debug("Flushing entries. size {} Mb -- Already trimmed: {} Mb", sizeToFlush / 1024.0 / 1024,
-                sizeTrimmed / 1024.0 / 1024);
+        if (log.isDebugEnabled()) {
+            log.debug("Flushing entries. size {} Mb -- Already trimmed: {} Mb", sizeToFlush / 1024.0 / 1024,
+                    sizeTrimmed / 1024.0 / 1024);
+        }
 
         // Write all the pending entries into the entry logger and collect the offset position for each entry
         Multimap<Long, LongPair> locationMap = ArrayListMultimap.create();
@@ -514,6 +547,12 @@ public class DbLedgerStorage implements CompactableLedgerStorage {
 
             long location = entryLogger.addEntry(ledgerId, content.nioBuffer(), true);
             locationMap.put(ledgerId, new LongPair(entryId, location));
+
+            // While we have space in the read cache, we transfer entries from the write cache
+            if (readCache.size() < maxReadCacheSizeBelowThreshold) {
+                content.retain();
+                readCache.put(ledgerId, entryId, content);
+            }
         }
 
         entryLogger.flush();
@@ -530,7 +569,10 @@ public class DbLedgerStorage implements CompactableLedgerStorage {
 
         long flushTime = MathUtils.elapsedNanos(startTime);
         double flushThroughput = sizeToFlush / 1024 / 1024 / flushTime / 1e9;
-        log.debug("Flushing done time {} s -- Written {} Mb/s", flushTime / 1e9, flushThroughput);
+        
+        if (log.isDebugEnabled()) {
+            log.debug("Flushing done time {} s -- Written {} Mb/s", flushTime / 1e9, flushThroughput);
+        }
 
         recordSuccessfulEvent(flushStats, startTime);
         flushSizeStats.registerSuccessfulValue(sizeToFlush);
@@ -545,10 +587,14 @@ public class DbLedgerStorage implements CompactableLedgerStorage {
     @Override
     public void trimEntries(long ledgerId, long lastEntryId) throws IOException {
         if (!trimEnabled) {
+            // There's no harm in evicting from read cache
+            readCache.trimLedger(ledgerId, lastEntryId);
             return;
         }
 
-        log.debug("Trim entries {}@{}", ledgerId, lastEntryId);
+        if (log.isDebugEnabled()) {
+            log.debug("Trim entries {}@{}", ledgerId, lastEntryId);
+        }
         long startTime = MathUtils.nowInNano();
 
         // Trimming only affects entries that are still in the write cache
@@ -556,7 +602,6 @@ public class DbLedgerStorage implements CompactableLedgerStorage {
         try {
             long deletedSize = writeCache.trimLedger(ledgerId, lastEntryId);
             writeCacheSizeTrimmed.addAndGet(deletedSize);
-            readAheadCache.trimLedger(ledgerId, lastEntryId);
 
             trimStats.registerSuccessfulEvent(MathUtils.elapsedNanos(startTime), TimeUnit.NANOSECONDS);
         } catch (Exception e) {
@@ -568,7 +613,9 @@ public class DbLedgerStorage implements CompactableLedgerStorage {
 
     @Override
     public void deleteLedger(long ledgerId) throws IOException {
-        log.debug("Deleting ledger {}", ledgerId);
+        if (log.isDebugEnabled()) {
+            log.debug("Deleting ledger {}", ledgerId);
+        }
 
         // Delete entries from this ledger that are still in the write cache
         writeCacheMutex.readLock().lock();
@@ -578,7 +625,7 @@ public class DbLedgerStorage implements CompactableLedgerStorage {
             writeCacheMutex.readLock().unlock();
         }
 
-        readAheadCache.deleteLedger(ledgerId);
+        readCache.deleteLedger(ledgerId);
         entryLocationIndex.delete(ledgerId);
         ledgerIndex.delete(ledgerId);
     }
@@ -592,6 +639,11 @@ public class DbLedgerStorage implements CompactableLedgerStorage {
     public synchronized void updateEntriesLocations(Iterable<EntryLocation> locations) throws IOException {
         // Trigger a flush to have all the entries being compacted in the db storage
         flush();
+
+        // Remove entries from read-cache
+        for (EntryLocation location : locations) {
+            readCache.invalidate(location.ledger, location.entry);
+        }
 
         entryLocationIndex.updateLocations(locations);
     }

@@ -205,7 +205,9 @@ public class ReplicationWorker implements Runnable {
 
     private boolean rereplicate(long ledgerIdToReplicate) throws InterruptedException, BKException,
             UnavailableException {
-        LOG.debug("Going to replicate the fragments of the ledger: {}", ledgerIdToReplicate);
+        if (LOG.isDebugEnabled()) {
+            LOG.debug("Going to replicate the fragments of the ledger: {}", ledgerIdToReplicate);
+        }
         LedgerHandle lh;
         try {
             lh = admin.openLedgerNoRecovery(ledgerIdToReplicate);
@@ -235,7 +237,9 @@ public class ReplicationWorker implements Runnable {
             return false;
         }
         Set<LedgerFragment> fragments = getUnderreplicatedFragments(lh);
-        LOG.debug("Founds fragments {} for replication from ledger: {}", fragments, ledgerIdToReplicate);
+        if (LOG.isDebugEnabled()) {
+            LOG.debug("Founds fragments {} for replication from ledger: {}", fragments, ledgerIdToReplicate);
+        }
 
         boolean foundOpenFragments = false;
         for (LedgerFragment ledgerFragment : fragments) {
