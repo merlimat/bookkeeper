@@ -1,6 +1,6 @@
 yinst.generated_by: statecc 1.0.7; yinst_lib 1.1.6297
 yinst.yinst_version: 4.225
-yinst.timestamp: 1424462010
+yinst.timestamp: 1431647314
 yinst.command: /home/y/bin/statecc build.yidf --platform rhel-6.x -br test 
 yinst.package: yahoo/buildyblocks-1.99.5.30(1423601981)
 yinst.package: yahoo/buildyblocks_assemble-1.99.2.30(1423601957)
@@ -83,7 +83,7 @@ yinst.package: ypan/perl-HTTP-Server-Simple-0.44_06(1343688579)
 yinst.package: ypan/perl-IO-1.2500_07(1335196861)
 yinst.package: ypan/perl-IO-HTML-1.00_183(1398268183)
 yinst.package: ypan/perl-IO-Prompt-0.997002_01(1413940493)
-yinst.package: ypan/perl-IO-Socket-SSL-1.981_179(1398268256)
+yinst.package: ypan/perl-IO-Socket-SSL-2.012_179(1429260356)
 yinst.package: ypan/perl-IO-Stty-0.03_05(1343693047)
 yinst.package: ypan/perl-IO-Tty-1.10_08(1366913155)
 yinst.package: ypan/perl-IO-stringy-2.110_09(1350693349)
@@ -100,23 +100,23 @@ yinst.package: ypan/perl-MIME-Base64-3.13_10(1366305138)
 yinst.package: ypan/perl-MailTools-2.11_06(1358213265)
 yinst.package: ypan/perl-Module-Implementation-0.07_189(1397750330)
 yinst.package: ypan/perl-Module-Runtime-0.014_191(1397750472)
-yinst.package: ypan/perl-Mozilla-CA-20130114_178(1398269508)
+yinst.package: ypan/perl-Mozilla-CA-20141217_179(1429262770)
 yinst.package: ypan/perl-NTLM-1.09_180(1398269938)
 yinst.package: ypan/perl-Net-HTTP-6.07_183(1406325497)
-yinst.package: ypan/perl-Net-SSLeay-1.58_181(1398269914)
+yinst.package: ypan/perl-Net-SSLeay-1.68_181(1429262498)
 yinst.package: ypan/perl-Number-Compare-0.03_05(1343687471)
 yinst.package: ypan/perl-Package-Stash-0.36_185(1397751473)
 yinst.package: ypan/perl-Params-Util-1.07_187(1397751561)
 yinst.package: ypan/perl-Params-Validate-1.06_171(1395804060)
 yinst.package: ypan/perl-Parse-RecDescent-1.967009_134(1393212593)
-yinst.package: ypan/perl-PathTools-3.40_13(1366305229)
+yinst.package: ypan/perl-PathTools-3.47_13(1429044990)
 yinst.package: ypan/perl-Pod-Escapes-1.04_11(1346984244)
 yinst.package: ypan/perl-Pod-Parser-1.61_04(1383356996)
 yinst.package: ypan/perl-Pod-Perldoc-3.17_09(1346984294)
 yinst.package: ypan/perl-Pod-Simple-3.28_176(1398270456)
 yinst.package: ypan/perl-Readonly-2.00_15(1417463320)
 yinst.package: ypan/perl-Readonly-XS-1.05_06(1366913964)
-yinst.package: ypan/perl-Scalar-List-Utils-1.27_10(1366305245)
+yinst.package: ypan/perl-Scalar-List-Utils-1.41_10(1429203196)
 yinst.package: ypan/perl-Set-IntSpan-1.16_03(1343684678)
 yinst.package: ypan/perl-Set-Scalar-1.26_04(1378858435)
 yinst.package: ypan/perl-Shell-POSIX-Select-0.05_03(1343698982)
@@ -164,7 +164,7 @@ yinst.package: ypan/perl-libwww-perl-6.08_01(1406329404)
 yinst.package: yahoo/perl_Culpa-0.0.4(1301415876)
 yinst.package: yahoo/perl_Pogo_Data-0.0.7(1280527988)
 yinst.package: yahoo/perl_Yahoo_Backyard_SingleSignOn-1.54_15(1407782018)
-yinst.package: yahoo/perl_Yahoo_Igor-1.0.36.40050(1371692197)
+yinst.package: yahoo/perl_Yahoo_Igor-1.0.127.14(1427306765)
 yinst.package: yahoo/perl_cli_simplebase-1.0.24(1394151166)
 yinst.package: yahoo/perl_yahoo_cli-1.0.25(1366311147)
 yinst.package: yahoo/perl_yiv-2.7.4(1365822837)
@@ -189,25 +189,23 @@ yinst.package: yahoo/svnzip-1.0.11(1361566427)
 yinst.package: yahoo/yahoo_bouncer_url-0.02(1267815260)
 yinst.package: yahoo/yahoo_cfg_dev-4.0.100(1368123486)
 yinst.package: yahoo/yahoo_multimode-3.0.4(1343756372)
-yinst.package: yahoo/ycore-1.36.1(1407256453)
+yinst.package: yahoo/yconfig_lite-1.3.1.42(1354064320)
+yinst.package: yahoo/ycore-1.37.0(1417658441)
 yinst.package: yahoo/ycron-1.11.5(1341866302)
 yinst.package: yahoo/ycrypt-1.1.16(1352161094)
 yinst.package: yahoo/yinst_auto_version-4.0.16(1364230142)
-yinst.package: yahoo/yinst_create-3.238.38(1411511827)
+yinst.package: yahoo/yinst_create-3.238.49(1428539883)
 yinst.package: yahoo/yinst_lib-1.1.6297(1361304494)
 yinst.package: yahoo/yiv-0.2.268(1385947846)
-yinst.package: yahoo/yjava_jdk-1.7.0_60.26(1413847306)
+yinst.package: yahoo/yjava_jdk-1.8.0_25.28(1413907810)
 yinst.package: yahoo/yjava_maven-3.0.5_41(1402952873)
 yinst.package: yahoo/yjava_vmwrapper-2.1.7(1348155433)
-yinst.package: yahoo/ykeydb-2.0.1.56(1372894359)
-yinst.package: yahoo/ykeykey-2.1.0.72(1360717285)
-yinst.package: yahoo/ykeykeyshared-2.2.0.116(1360710476)
-yinst.package: yahoo/ylock-1.4.1.22(1341945205)
-yinst.package: yahoo/ylock_kern-1.100.0.20(1344282636)
-yinst.package: yahoo/yroot-1.6.78(1384482244)
+yinst.package: yahoo/ykeydb-2.0.3.171(1414643938)
+yinst.package: yahoo/ykeykey-2.2.0.218(1414692829)
+yinst.package: yahoo/ykeykeyshared-2.3.1.286(1414587824)
+yinst.package: yahoo/yroot-1.6.94(1429927630)
 yinst.package: yahoo/yrop-0.32.155(1355879400)
 yinst.package: yahoo/ysecure-2.14.1(1401491246)
-yinst.package: yahoo/ysys-2.40.2(1406908602)
 yinst.package: yahoo/ysys_utils-2.40.2(1406908602)
 --- /dev/null
 +++ var/yinst/settings/buildyblocks_deploy
@@ -292,7 +290,7 @@ yinst.package: yahoo/ysys_utils-2.40.2(1406908602)
 +JAVA_HOME /home/y/share/yjava_jdk/java
 +NETWORKADDRESS_CACHE_NEGATIVE_TTL 10
 +NETWORKADDRESS_CACHE_TTL 120
-+platform x86_64-rhel4-gcc3
++platform x86_64-linux-gcc
 --- /dev/null
 +++ var/yinst/settings/yjava_maven
 @@ -0,0 +1,4 @@
@@ -319,15 +317,6 @@ yinst.package: yahoo/ysys_utils-2.40.2(1406908602)
 +negative_caching enable
 +read_timeout 5000
 +reconn_timeout 3000
---- /dev/null
-+++ var/yinst/settings/ylock
-@@ -0,0 +1,2 @@
-+autostart on
-+crontab on
---- /dev/null
-+++ var/yinst/settings/ylock_kern
-@@ -0,0 +1,1 @@
-+autostart on
 --- /dev/null
 +++ var/yinst/settings/yroot
 @@ -0,0 +1,6 @@

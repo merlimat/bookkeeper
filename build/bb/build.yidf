@@ -8,7 +8,7 @@ add yinst pkg dist_tools            STABLE
 add yinst pkg srczip
 add yinst pkg svnlite		    1.6		1.6.9999.9999
 add yinst pkg git
-add yinst pkg yjava_jdk             1.7             1.7.99999.99999
+add yinst pkg yjava_jdk             1.8             1.8.99999.99999
 add yinst pkg yjava_maven           3.0	3.9999.9999
 add yinst pkg statecc		    1.0.0	    1.9999.9999
 add yinst pkg csretools             0.0.5           0.9999.9999
