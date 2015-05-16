@@ -355,8 +355,6 @@ public class PerChannelBookieClient extends ChannelInboundHandlerAdapter {
         Object request = null;
         CompletionKey completion = null;
         if (useV2WireProtocol) {
-            toSend.retain();
-
             request = new BookieProtocol.AddRequest(BookieProtocol.CURRENT_PROTOCOL_VERSION, ledgerId, entryId,
                     (short) options, masterKey, toSend);
             completion = new V2CompletionKey(ledgerId, entryId, OperationType.ADD_ENTRY);
