@@ -156,22 +156,12 @@ public class BookieProtoEncoding {
             // packet format is different between ADDENTRY and READENTRY
             long ledgerId = -1;
             long entryId = BookieProtocol.INVALID_ENTRY_ID;
-            byte[] masterKey = null;
 
             ServerStats.getInstance().incrementPacketsReceived();
 
             switch (opCode) {
-            case BookieProtocol.ADDENTRY:
-                // first read master key, if master key is composed only of 0s, we'll avoid to allocated and copy it
-                if (packet.forEachByte(packet.readerIndex(), BookieProtocol.MASTER_KEY_LENGTH, zeroByteFinder) == -1) {
-                    // Master key is all 0s
-                    masterKey = emptyMasterKey;
-                    packet.readerIndex(packet.readerIndex() + BookieProtocol.MASTER_KEY_LENGTH);
-                } else {
-                    // Master key is set, we need to copy and check it
-                    masterKey = new byte[BookieProtocol.MASTER_KEY_LENGTH];
-                    packet.readBytes(masterKey, 0, BookieProtocol.MASTER_KEY_LENGTH);
-                }
+            case BookieProtocol.ADDENTRY: {
+                byte[] masterKey = readMasterKey(packet);
 
                 // Read ledger and entry id without advancing the reader index
                 packet.markReaderIndex();
@@ -179,13 +169,13 @@ public class BookieProtoEncoding {
                 entryId = packet.readLong();
                 packet.resetReaderIndex();
                 return new BookieProtocol.AddRequest(version, ledgerId, entryId, flags, masterKey, packet.retain());
+            }
             case BookieProtocol.READENTRY:
                 ledgerId = packet.readLong();
                 entryId = packet.readLong();
 
                 if ((flags & BookieProtocol.FLAG_DO_FENCING) == BookieProtocol.FLAG_DO_FENCING && version >= 2) {
-                    masterKey = new byte[BookieProtocol.MASTER_KEY_LENGTH];
-                    packet.readBytes(masterKey, 0, BookieProtocol.MASTER_KEY_LENGTH);
+                    byte[] masterKey = readMasterKey(packet);
                     return new BookieProtocol.ReadRequest(version, ledgerId, entryId, flags, masterKey);
                 } else {
                     return new BookieProtocol.ReadRequest(version, ledgerId, entryId, flags);
@@ -202,6 +192,23 @@ public class BookieProtoEncoding {
             }
 
             return packet;
+        }
+        
+        private static byte[] readMasterKey(ByteBuf packet) {
+            byte[] masterKey = null;
+
+            // first read master key, if master key is composed only of 0s, we'll avoid to allocated and copy it
+            if (packet.forEachByte(packet.readerIndex(), BookieProtocol.MASTER_KEY_LENGTH, zeroByteFinder) == -1) {
+                // Master key is all 0s
+                masterKey = emptyMasterKey;
+                packet.readerIndex(packet.readerIndex() + BookieProtocol.MASTER_KEY_LENGTH);
+            } else {
+                // Master key is set, we need to copy and check it
+                masterKey = new byte[BookieProtocol.MASTER_KEY_LENGTH];
+                packet.readBytes(masterKey, 0, BookieProtocol.MASTER_KEY_LENGTH);
+            }
+
+            return masterKey;
         }
     }
 
