@@ -529,7 +529,6 @@ class Journal extends BookieCriticalThread implements CheckpointSource {
     private final OpStatsLogger journalAddEntryStats;
     private final OpStatsLogger journalSyncStats;
     private final OpStatsLogger journalCreationStats;
-    private final OpStatsLogger journalFlushStats;
     private final OpStatsLogger journalProcessTimeStats;
     private final OpStatsLogger journalQueueStats;
     private final OpStatsLogger forceWriteGroupingCountStats;
@@ -575,7 +574,6 @@ class Journal extends BookieCriticalThread implements CheckpointSource {
         journalAddEntryStats = statsLogger.getOpStatsLogger(JOURNAL_ADD_ENTRY);
         journalSyncStats = statsLogger.getOpStatsLogger(JOURNAL_SYNC);
         journalCreationStats = statsLogger.getOpStatsLogger(JOURNAL_CREATION_LATENCY);
-        journalFlushStats = statsLogger.getOpStatsLogger(JOURNAL_FLUSH_LATENCY);
         journalQueueStats = statsLogger.getOpStatsLogger(JOURNAL_QUEUE_LATENCY);
         journalProcessTimeStats = statsLogger.getOpStatsLogger(JOURNAL_PROCESS_TIME_LATENCY);
         forceWriteGroupingCountStats = statsLogger.getOpStatsLogger(JOURNAL_FORCE_WRITE_GROUPING_COUNT);
@@ -802,7 +800,6 @@ class Journal extends BookieCriticalThread implements CheckpointSource {
         JournalChannel logFile = null;
         forceWriteThread.start();
         Stopwatch journalCreationWatcher = new Stopwatch();
-        Stopwatch journalFlushWatcher = new Stopwatch();
         long batchSize = 0;
         try {
             List<Long> journalIds = listJournalIds(journalDirectory, null);
@@ -895,11 +892,7 @@ class Journal extends BookieCriticalThread implements CheckpointSource {
                             if (conf.getJournalFormatVersionToWrite() >= JournalChannel.V5) {
                                 writePaddingBytes(logFile, paddingBuff, conf.getJournalAlignmentSize());
                             }
-                            journalFlushWatcher.reset().start();
-                            fc.force(false);
                             lastFlushPosition = fc.position();
-                            journalFlushStats.registerSuccessfulEvent(
-                                    journalFlushWatcher.stop().elapsedTime(TimeUnit.NANOSECONDS), TimeUnit.NANOSECONDS);
 
                             // Trace the lifetime of entries through persistence
                             if (LOG.isDebugEnabled()) {

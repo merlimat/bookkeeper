@@ -1,8 +1,6 @@
 package org.apache.bookkeeper.bookie.storage.ldb;
 
 import static com.google.common.base.Preconditions.checkArgument;
-import io.netty.buffer.ByteBuf;
-import io.netty.buffer.Unpooled;
 
 import java.io.IOException;
 import java.util.List;
@@ -42,6 +40,8 @@ import com.google.common.collect.Multimap;
 import com.google.common.util.concurrent.RateLimiter;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.protobuf.ByteString;
+
+import io.netty.buffer.ByteBuf;
 
 public class DbLedgerStorage implements CompactableLedgerStorage {
     final static Logger LOG = LoggerFactory.getLogger(DbLedgerStorage.class);
@@ -550,7 +550,6 @@ public class DbLedgerStorage implements CompactableLedgerStorage {
 
             // While we have space in the read cache, we transfer entries from the write cache
             if (readCache.size() < maxReadCacheSizeBelowThreshold) {
-                content.retain();
                 readCache.put(ledgerId, entryId, content);
             }
         }

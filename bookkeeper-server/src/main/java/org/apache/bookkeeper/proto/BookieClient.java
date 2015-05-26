@@ -185,6 +185,10 @@ public class BookieClient implements PerChannelBookieClientFactory {
                 return;
             }
 
+            // Retain the buffer, since the connection could be obtained after the PendingAddOp might have already
+            // failed
+            toSend.retain();
+
             client.obtain(new GenericCallback<PerChannelBookieClient>() {
                 @Override
                 public void operationComplete(final int rc, PerChannelBookieClient pcbc) {
@@ -200,9 +204,11 @@ public class BookieClient implements PerChannelBookieClientFactory {
                             cb.writeComplete(getRc(BKException.Code.InterruptedException),
                                     ledgerId, entryId, addr, ctx);
                         }
-                        return;
+                    } else {
+                        pcbc.addEntry(ledgerId, masterKey, entryId, toSend, cb, ctx, options);
                     }
-                    pcbc.addEntry(ledgerId, masterKey, entryId, toSend, cb, ctx, options);
+
+                    toSend.release();
                 }
             });
         } finally {

@@ -77,8 +77,7 @@ class BookieNettyServer {
     boolean suspended = false;
 
     final BookieAuthProvider.Factory authProviderFactory;
-    final BookieProtoEncoding.ResponseEncoder responseEncoder;
-    final BookieProtoEncoding.RequestDecoder requestDecoder;
+    final ExtensionRegistry registry = ExtensionRegistry.newInstance();
 
     final EventLoopGroup eventLoopGroup;
 
@@ -86,12 +85,7 @@ class BookieNettyServer {
             InterruptedException, BookieException {
         this.conf = conf;
         this.requestProcessor = processor;
-
-        ExtensionRegistry registry = ExtensionRegistry.newInstance();
-        authProviderFactory = AuthProviderFactoryFactory.newBookieAuthProviderFactory(conf, registry);
-
-        responseEncoder = new BookieProtoEncoding.ResponseEncoder(registry);
-        requestDecoder = new BookieProtoEncoding.RequestDecoder(registry);
+        this.authProviderFactory = AuthProviderFactoryFactory.newBookieAuthProviderFactory(conf, registry);
 
         ThreadFactory threadFactory = new ThreadFactoryBuilder().setNameFormat("bookie-io-%s").build();
         final int numThreads = Runtime.getRuntime().availableProcessors() * 2;
@@ -173,8 +167,8 @@ class BookieNettyServer {
                 pipeline.addLast("lengthbaseddecoder", new LengthFieldBasedFrameDecoder(maxMessageSize, 0, 4, 0, 4));
                 pipeline.addLast("lengthprepender", new LengthFieldPrepender(4));
 
-                pipeline.addLast("bookieProtoDecoder", requestDecoder);
-                pipeline.addLast("bookieProtoEncoder", responseEncoder);
+                pipeline.addLast("bookieProtoDecoder", new BookieProtoEncoding.RequestDecoder(registry));
+                pipeline.addLast("bookieProtoEncoder", new BookieProtoEncoding.ResponseEncoder(registry));
                 pipeline.addLast("bookieAuthHandler", new AuthHandler.ServerSideHandler(authProviderFactory));
 
                 ChannelInboundHandler requestHandler = isRunning.get() ? new BookieRequestHandler(conf,
