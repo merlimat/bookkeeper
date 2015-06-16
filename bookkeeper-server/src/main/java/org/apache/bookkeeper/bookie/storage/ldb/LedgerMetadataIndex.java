@@ -183,7 +183,7 @@ public class LedgerMetadataIndex implements Closeable {
                 log.debug("Inserting new ledger {}", ledgerId);
             }
         } else {
-            if (!Arrays.equals(ledgerData.getMasterKey().toByteArray(), masterKey)) {
+            if (masterKey.length > 0 && !Arrays.equals(ledgerData.getMasterKey().toByteArray(), masterKey)) {
                 log.warn("Ledger {} masterKey in db can only be set once.", ledgerId);
                 throw new IOException(BookieException.create(BookieException.Code.IllegalOpException));
             }
