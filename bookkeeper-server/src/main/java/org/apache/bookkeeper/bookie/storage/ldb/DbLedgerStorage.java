@@ -550,7 +550,7 @@ public class DbLedgerStorage implements CompactableLedgerStorage {
 
             // While we have space in the read cache, we transfer entries from the write cache
             if (readCache.size() < maxReadCacheSizeBelowThreshold) {
-                readCache.put(ledgerId, entryId, content);
+                readCache.putNoCopy(ledgerId, entryId, content);
             }
         }
 

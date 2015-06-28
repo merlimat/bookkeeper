@@ -1,6 +1,7 @@
 package org.apache.bookkeeper.bookie.storage.ldb;
 
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.PooledByteBufAllocator;
 
 import java.util.Map.Entry;
 import java.util.NavigableMap;
@@ -19,8 +20,20 @@ public class EntryCache {
         this.size = new AtomicLong(0L);
         this.count = new AtomicLong(0L);
     }
-
+    
     public void put(long ledgerId, long entryId, ByteBuf entry) {
+        // Make a copy of the entry for the cache, to make sure we're not retaining a buffer much bigger than the actual
+        // entry
+        ByteBuf copiedEntry = PooledByteBufAllocator.DEFAULT.directBuffer(entry.readableBytes(), entry.readableBytes());
+        entry.markReaderIndex();
+        copiedEntry.writeBytes(entry);
+        entry.resetReaderIndex();
+
+        putNoCopy(ledgerId, entryId, copiedEntry);
+        copiedEntry.release();
+    }
+
+    public void putNoCopy(long ledgerId, long entryId, ByteBuf entry) {
         entry.retain();
         ByteBuf oldValue = cache.put(new LongPair(ledgerId, entryId), entry);
         if (oldValue != null) {
