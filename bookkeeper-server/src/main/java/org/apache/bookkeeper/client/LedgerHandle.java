@@ -618,8 +618,11 @@ public class LedgerHandle {
                 public void safeRun() {
                     ByteBuf toSend = macManager.computeDigestAndPackageForSending(entryId, lastAddConfirmed,
                             currentLength, data);
-                    op.initiate(toSend, data.readableBytes());
-                    toSend.release();
+                    try {
+                        op.initiate(toSend, data.readableBytes());
+                    } finally {
+                        toSend.release();
+                    }
                 }
             });
         } catch (RejectedExecutionException e) {
