@@ -1,5 +1,7 @@
 package org.apache.bookkeeper.client;
 
+import java.util.zip.CRC32;
+
 /*
 * Licensed to the Apache Software Foundation (ASF) under one
 * or more contributor license agreements.  See the NOTICE file
@@ -20,17 +22,11 @@ package org.apache.bookkeeper.client;
 
 
 import io.netty.buffer.ByteBuf;
-
-import java.util.zip.CRC32;
+import io.netty.buffer.ByteBufProcessor;
+import io.netty.util.Recycler;
+import io.netty.util.Recycler.Handle;
 
 class CRC32DigestManager extends DigestManager {
-    private final ThreadLocal<CRC32> crc = new ThreadLocal<CRC32>() {
-        @Override
-        protected CRC32 initialValue() {
-            return new CRC32();
-        }
-    };
-
     public CRC32DigestManager(long ledgerId) {
         super(ledgerId);
     }
@@ -38,16 +34,53 @@ class CRC32DigestManager extends DigestManager {
     @Override
     int getMacCodeLength() {
         return 8;
+    }    
+    
+    @Override
+    Digest getDigest() {
+        return CRC32Digest.RECYCLER.get();
     }
 
-    @Override
-    void getValueAndReset(ByteBuf buf) {
-        buf.writeLong(crc.get().getValue());
-        crc.get().reset();
-    }
+    private static class CRC32Digest implements Digest, ByteBufProcessor {
+        private final Handle recyclerHandle;
+        private final CRC32 crc;
 
-    @Override
-    void update(ByteBuf data) {
-        crc.get().update(data.nioBuffer());
+        public CRC32Digest(Handle recyclerHandle) {
+            this.recyclerHandle = recyclerHandle;
+            this.crc = new CRC32();
+        }
+
+        @Override
+        public void getValue(ByteBuf buf) {
+            buf.writeLong(crc.getValue());
+        }
+
+        @Override
+        public void update(ByteBuf data) {
+            data.forEachByte(this);
+        }
+
+        @Override
+        public void update(ByteBuf data, int index, int length) {
+            data.forEachByte(index, length, this);
+        }
+
+        @Override
+        public boolean process(byte value) throws Exception {
+            crc.update(value);
+            return true;
+        }
+
+        @Override
+        public void recycle() {
+            crc.reset();
+            RECYCLER.recycle(this, recyclerHandle);
+        }
+
+        private static final Recycler<CRC32Digest> RECYCLER = new Recycler<CRC32Digest>() {
+            protected CRC32Digest newObject(Recycler.Handle handle) {
+                return new CRC32Digest(handle);
+            }
+        };
     }
 }

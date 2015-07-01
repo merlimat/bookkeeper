@@ -21,12 +21,12 @@ package org.apache.bookkeeper.client;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.CompositeByteBuf;
 import io.netty.buffer.PooledByteBufAllocator;
-import io.netty.buffer.Unpooled;
 
 import java.security.GeneralSecurityException;
 
 import org.apache.bookkeeper.client.BKException.BKDigestMatchException;
 import org.apache.bookkeeper.client.BookKeeper.DigestType;
+import org.apache.bookkeeper.util.ByteBufComparator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -45,13 +45,14 @@ abstract class DigestManager {
     long ledgerId;
 
     abstract int getMacCodeLength();
+    abstract Digest getDigest();
 
-    void update(byte[] data) {
-        update(Unpooled.wrappedBuffer(data, 0, data.length));
+    interface Digest {
+        void update(ByteBuf buffer);
+        void update(ByteBuf buffer, int index, int length);
+        void getValue(ByteBuf buffer);
+        void recycle();
     }
-
-    abstract void update(ByteBuf buffer);
-    abstract void getValueAndReset(ByteBuf buffer);
 
     final int macCodeLength;
 
@@ -88,9 +89,11 @@ abstract class DigestManager {
         headersBuffer.writeLong(lastAddConfirmed);
         headersBuffer.writeLong(length);
         
-        update(headersBuffer);
-        update(data);
-        getValueAndReset(headersBuffer);
+        Digest digest = getDigest();
+        digest.update(headersBuffer);
+        digest.update(data);
+        digest.getValue(headersBuffer);
+        digest.recycle();
 
         return new CompositeByteBuf(PooledByteBufAllocator.DEFAULT, true, 2, headersBuffer, data);
     }
@@ -113,21 +116,23 @@ abstract class DigestManager {
                     this.getClass().getName(), dataReceived.readableBytes());
             throw new BKDigestMatchException();
         }
-        update(dataReceived.slice(0, METADATA_LENGTH));
+        Digest digest = getDigest();
+        digest.update(dataReceived, dataReceived.readerIndex(), METADATA_LENGTH);
 
         int offset = METADATA_LENGTH + macCodeLength;
-        update(dataReceived.slice(offset, dataReceived.readableBytes() - offset));
+        digest.update(dataReceived, dataReceived.readerIndex() + offset, dataReceived.readableBytes() - offset);
 
-        ByteBuf digest = PooledByteBufAllocator.DEFAULT.buffer(macCodeLength);
-        getValueAndReset(digest);
+        ByteBuf computedDigest = PooledByteBufAllocator.DEFAULT.buffer(macCodeLength);
+        digest.getValue(computedDigest);
+        digest.recycle();
 
         try {
-            if (digest.compareTo(dataReceived.slice(METADATA_LENGTH, macCodeLength)) != 0) {
+            if (!ByteBufComparator.equals(computedDigest, dataReceived, METADATA_LENGTH, macCodeLength)) {
                 logger.error("Mac mismatch for ledger-id: " + ledgerId + ", entry-id: " + entryId);
                 throw new BKDigestMatchException();
             }
         } finally {
-            digest.release();
+            computedDigest.release();
         }
 
         long actualLedgerId = dataReceived.readLong();

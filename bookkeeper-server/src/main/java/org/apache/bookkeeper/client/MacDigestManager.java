@@ -1,5 +1,17 @@
 package org.apache.bookkeeper.client;
 
+import static com.google.common.base.Charsets.UTF_8;
+
+import java.security.GeneralSecurityException;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 /*
 * Licensed to the Apache Software Foundation (ASF) under one
 * or more contributor license agreements.  See the NOTICE file
@@ -19,18 +31,9 @@ package org.apache.bookkeeper.client;
 */
 
 import io.netty.buffer.ByteBuf;
-
-import java.security.GeneralSecurityException;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-
-import javax.crypto.Mac;
-import javax.crypto.spec.SecretKeySpec;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import static com.google.common.base.Charsets.UTF_8;
+import io.netty.buffer.ByteBufProcessor;
+import io.netty.util.Recycler;
+import io.netty.util.Recycler.Handle;
 
 class MacDigestManager extends DigestManager {
     private final static Logger LOG = LoggerFactory.getLogger(MacDigestManager.class);
@@ -41,22 +44,6 @@ class MacDigestManager extends DigestManager {
     public static final int MAC_CODE_LENGTH = 20;
 
     final byte[] passwd;
-
-    private final ThreadLocal<Mac> mac = new ThreadLocal<Mac>() {
-        @Override
-        protected Mac initialValue() {
-            try {
-                byte[] macKey = genDigest("mac", passwd);
-                SecretKeySpec keySpec = new SecretKeySpec(macKey, KEY_ALGORITHM);
-                Mac mac = Mac.getInstance(KEY_ALGORITHM);
-                mac.init(keySpec);
-                return mac;
-            } catch (GeneralSecurityException gse) {
-                LOG.error("Couldn't not get mac instance", gse);
-                return null;
-            }
-        }
-    };
 
     public MacDigestManager(long ledgerId, byte[] passwd) throws GeneralSecurityException {
         super(ledgerId);
@@ -75,16 +62,59 @@ class MacDigestManager extends DigestManager {
         return MAC_CODE_LENGTH;
     }
 
-
     @Override
-    void getValueAndReset(ByteBuf buffer) {
-        buffer.writeBytes(mac.get().doFinal());
+    Digest getDigest() {
+        return RECYCLER.get();
     }
 
-    @Override
-    void update(ByteBuf data) {
-        mac.get().update(data.nioBuffer());
+    private class MACDigest implements Digest, ByteBufProcessor {
+        private final Handle recyclerHandle;
+        private final Mac mac;
+
+        public MACDigest(Handle recyclerHandle) throws GeneralSecurityException {
+            this.recyclerHandle = recyclerHandle;
+            byte[] macKey = genDigest("mac", passwd);
+            SecretKeySpec keySpec = new SecretKeySpec(macKey, KEY_ALGORITHM);
+            this.mac = Mac.getInstance(KEY_ALGORITHM);
+            this.mac.init(keySpec);
+        }
+
+        @Override
+        public void getValue(ByteBuf buf) {
+            buf.writeBytes(mac.doFinal());
+        }
+
+        @Override
+        public void update(ByteBuf data) {
+            data.forEachByte(this);
+        }
+
+        @Override
+        public void update(ByteBuf data, int index, int length) {
+            data.forEachByte(index, length, this);
+        }
+
+        @Override
+        public boolean process(byte value) throws Exception {
+            mac.update(value);
+            return true;
+        }
+
+        @Override
+        public void recycle() {
+            mac.reset();
+            RECYCLER.recycle(this, recyclerHandle);
+        }
     }
 
-
+    private final Recycler<MACDigest> RECYCLER = new Recycler<MACDigest>() {
+        protected MACDigest newObject(Recycler.Handle handle) {
+            try {
+                return new MACDigest(handle);
+            } catch (GeneralSecurityException gse) {
+                LOG.error("Couldn't not get mac instance", gse);
+                return null;
+            }
+        }
+    };
 }
