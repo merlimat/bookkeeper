@@ -125,7 +125,7 @@ public class OrderedSafeExecutor {
      * schedules a one time action to execute
      */
     public void submit(SafeRunnable r) {
-        chooseThread().submit(r);
+        chooseThread().execute(r);
     }
 
     /**
@@ -134,7 +134,7 @@ public class OrderedSafeExecutor {
      * @param r
      */
     public void submitOrdered(Object orderingKey, SafeRunnable r) {
-        chooseThread(orderingKey).submit(r);
+        chooseThread(orderingKey).execute(r);
     }
 
     /**
@@ -143,7 +143,7 @@ public class OrderedSafeExecutor {
      * @param r
      */
     public void submitOrdered(long orderingKey, SafeRunnable r) {
-        chooseThread(orderingKey).submit(r);
+        chooseThread(orderingKey).execute(r);
     }
 
     /**
@@ -152,7 +152,7 @@ public class OrderedSafeExecutor {
      * @param r
      */
     public void submitOrdered(int orderingKey, SafeRunnable r) {
-        chooseThread(orderingKey).submit(r);
+        chooseThread(orderingKey).execute(r);
     }
 
     private long getThreadID(long orderingKey) {

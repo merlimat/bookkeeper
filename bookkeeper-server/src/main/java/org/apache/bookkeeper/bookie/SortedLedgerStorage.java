@@ -174,7 +174,7 @@ public class SortedLedgerStorage extends InterleavedLedgerStorage
         // so we roll entry log files in SortedLedgerStorage itself.
         // After that, we could make the process writing data to entry logger file not bound with checkpoint.
         // otherwise, it hurts add performance.
-        scheduler.submit(new Runnable() {
+        scheduler.execute(new Runnable() {
             @Override
             public void run() {
                 try {

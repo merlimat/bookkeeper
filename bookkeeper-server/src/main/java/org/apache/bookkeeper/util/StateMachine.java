@@ -202,7 +202,7 @@ public class StateMachine {
 
         @Override
         public void sendEvent(final Event e) {
-            executor.submit(new FSMRunnable(e));
+            executor.execute(new FSMRunnable(e));
         }
 
         @Override
