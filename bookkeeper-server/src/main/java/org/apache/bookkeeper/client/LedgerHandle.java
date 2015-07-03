@@ -895,7 +895,9 @@ public class LedgerHandle {
         while ((pendingAddOp = pendingAddOps.peek()) != null
                && blockAddCompletions.get() == 0) {
             if (!pendingAddOp.completed) {
-                LOG.debug("pending add not completed: {}", pendingAddOp);
+                if (LOG.isDebugEnabled()) {
+                    LOG.debug("pending add not completed: {}", pendingAddOp);
+                }
                 return;
             }
             pendingAddOps.remove();
