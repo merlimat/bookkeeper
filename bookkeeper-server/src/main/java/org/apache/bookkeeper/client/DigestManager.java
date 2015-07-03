@@ -19,7 +19,6 @@ package org.apache.bookkeeper.client;
  */
 
 import io.netty.buffer.ByteBuf;
-import io.netty.buffer.CompositeByteBuf;
 import io.netty.buffer.PooledByteBufAllocator;
 
 import java.security.GeneralSecurityException;
@@ -27,6 +26,7 @@ import java.security.GeneralSecurityException;
 import org.apache.bookkeeper.client.BKException.BKDigestMatchException;
 import org.apache.bookkeeper.client.BookKeeper.DigestType;
 import org.apache.bookkeeper.util.ByteBufComparator;
+import org.apache.bookkeeper.util.DoubleByteBuf;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -82,7 +82,7 @@ abstract class DigestManager {
      * @return
      */
 
-    public ByteBuf computeDigestAndPackageForSending(long entryId, long lastAddConfirmed, long length, ByteBuf data) {
+    public DoubleByteBuf computeDigestAndPackageForSending(long entryId, long lastAddConfirmed, long length, ByteBuf data) {
         ByteBuf headersBuffer = PooledByteBufAllocator.DEFAULT.buffer(METADATA_LENGTH + macCodeLength);
         headersBuffer.writeLong(ledgerId);
         headersBuffer.writeLong(entryId);
@@ -95,7 +95,7 @@ abstract class DigestManager {
         digest.getValue(headersBuffer);
         digest.recycle();
 
-        return new CompositeByteBuf(PooledByteBufAllocator.DEFAULT, true, 2, headersBuffer, data);
+        return DoubleByteBuf.get(headersBuffer, data);
     }
 
     private void verifyDigest(ByteBuf dataReceived) throws BKDigestMatchException {
