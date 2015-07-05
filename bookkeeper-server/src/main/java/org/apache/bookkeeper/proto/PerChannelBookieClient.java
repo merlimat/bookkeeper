@@ -2,6 +2,7 @@
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
+
  * regarding copyright ownership.  The ASF licenses this file
  * to you under the Apache License, Version 2.0 (the
  * "License"); you may not use this file except in compliance
@@ -356,7 +357,7 @@ public class PerChannelBookieClient extends ChannelInboundHandlerAdapter {
         Object request = null;
         CompletionKey completion = null;
         if (useV2WireProtocol) {
-            request = new BookieProtocol.AddRequest(BookieProtocol.CURRENT_PROTOCOL_VERSION, ledgerId, entryId,
+            request = BookieProtocol.AddRequest.create(BookieProtocol.CURRENT_PROTOCOL_VERSION, ledgerId, entryId,
                     (short) options, masterKey, toSend);
             completion = V2CompletionKey.get(this, ledgerId, entryId, OperationType.ADD_ENTRY);
             completionObjects.put(completion,
@@ -365,7 +366,7 @@ public class PerChannelBookieClient extends ChannelInboundHandlerAdapter {
             final long txnId = getTxnId();
             final CompletionKey completionKey = new CompletionKey(this, txnId, OperationType.ADD_ENTRY);
             completionObjects.put(completionKey, AddCompletion.get(this, cb, ctx, ledgerId, entryId,
-                    scheduleTimeout(completionKey, addEntryTimeout), completion));
+                    scheduleTimeout(completionKey, addEntryTimeout), completionKey));
 
             // Build the request and calculate the total size to be included in the packet.
             BKPacketHeader.Builder headerBuilder = BKPacketHeader.newBuilder()
@@ -662,7 +663,6 @@ public class PerChannelBookieClient extends ChannelInboundHandlerAdapter {
     void errorOutReadKey(final CompletionKey key, final int rc) {
         LOG.debug("Removing completion key: {}", key);
         ReadCompletion completion = (ReadCompletion) completionObjects.remove(key);
-        key.recycle();
 
         if (null == completion) {
             return;
@@ -695,7 +695,6 @@ public class PerChannelBookieClient extends ChannelInboundHandlerAdapter {
 
     void errorOutAddKey(final CompletionKey key, final int rc) {
         AddCompletion completion = (AddCompletion) completionObjects.remove(key);
-        key.recycle();
 
         if (null == completion) {
             return;
@@ -859,11 +858,13 @@ public class PerChannelBookieClient extends ChannelInboundHandlerAdapter {
                     switch (operationType) {
                         case ADD_ENTRY: {
                             handleAddResponse(status, ledgerId, entryId, completionValue);
+                            response.recycle();
                             break;
                         }
                         case READ_ENTRY: {
                             BookieProtocol.ReadResponse readResponse = (BookieProtocol.ReadResponse) response;
                             handleReadResponse(status, readResponse.getLedgerId(), readResponse.getEntryId(), readResponse.data, completionValue);
+                            readResponse.recycle();
                             break;
                         }
                         default:
@@ -963,11 +964,6 @@ public class PerChannelBookieClient extends ChannelInboundHandlerAdapter {
         // The completion value should always be an instance of a ReadCompletion object when we reach here.
         ReadCompletion rc = (ReadCompletion)completionValue;
 
-        if (LOG.isDebugEnabled()) {
-            LOG.debug("Got response for read request from bookie: " + addr + " for ledger: " + ledgerId + " entry: "
-                    + entryId + " rc: " + rc + " entry length: " + body.readableBytes());
-        }
-
         // convert to BKException code because thats what the uppper
         // layers expect. This is UGLY, there should just be one set of
         // error codes.
@@ -977,6 +973,12 @@ public class PerChannelBookieClient extends ChannelInboundHandlerAdapter {
                       new Object[] { ledgerId, entryId, addr, status });
             rcToRet = BKException.Code.ReadException;
         }
+
+        if (LOG.isDebugEnabled()) {
+            LOG.debug("Got response for read request from bookie: " + addr + " for ledger: " + ledgerId + " entry: "
+                    + entryId + " rc: " + rcToRet + " entry length: " + body.readableBytes());
+        }
+
         rc.cb.readEntryComplete(rcToRet, ledgerId, entryId, body.slice(), rc.ctx);
     }
 
@@ -1059,10 +1061,10 @@ public class PerChannelBookieClient extends ChannelInboundHandlerAdapter {
         long startTime;
         WriteCallback originalCallback;
         Object originalCtx;
-        CompletionKey key;
+        CompletionKey completionKey;
 
         public static AddCompletion get(PerChannelBookieClient pcbc, WriteCallback originalCallback, Object originalCtx,
-                long ledgerId, long entryId, Timeout timeout, CompletionKey key) {
+                long ledgerId, long entryId, Timeout timeout, CompletionKey completionKey) {
             AddCompletion addCompletion = RECYCLER.get();
             addCompletion.originalCtx = originalCtx;
             addCompletion.ledgerId = ledgerId;
@@ -1072,7 +1074,7 @@ public class PerChannelBookieClient extends ChannelInboundHandlerAdapter {
             addCompletion.startTime = MathUtils.nowInNano();
             addCompletion.originalCallback = originalCallback;
             addCompletion.cb = null == pcbc.addEntryOpLogger ? originalCallback : addCompletion;
-            addCompletion.key = key;
+            addCompletion.completionKey = completionKey;
             return addCompletion;
         }
 
@@ -1101,12 +1103,16 @@ public class PerChannelBookieClient extends ChannelInboundHandlerAdapter {
         };
 
         public void recycle() {
-            if (key != null) {
-                key.recycle();
+            cb = null;
+            pcbc = null;
+            startTime = 0;
+            originalCallback = null;
+            originalCtx = null;
+
+            if (completionKey != null) {
+                completionKey.recycle();
             }
-            if (recyclerHandle != null) {
-                RECYCLER.recycle(this, recyclerHandle);
-            }
+            RECYCLER.recycle(this, recyclerHandle);
         }
     }
 
@@ -1198,7 +1204,8 @@ public class PerChannelBookieClient extends ChannelInboundHandlerAdapter {
                 return false;
             }
             V2CompletionKey that = (V2CompletionKey) obj;
-            return this.ledgerId == that.ledgerId && this.entryId == that.entryId;
+            return this.ledgerId == that.ledgerId && this.entryId == that.entryId
+                    && this.operationType == that.operationType;
         }
 
         @Override
@@ -1226,12 +1233,14 @@ public class PerChannelBookieClient extends ChannelInboundHandlerAdapter {
 
         @Override
         public void recycle() {
-            if (recyclerHandle != null) {
-                RECYCLER.recycle(this, recyclerHandle);
-            }
+            pcbc = null;
+            txnId = -1;
+            requestAt = -1;
+            ledgerId = -1;
+            entryId = -1;
+            RECYCLER.recycle(this, recyclerHandle);
         }
     }
-
 
     /**
      * Note : Helper functions follow
