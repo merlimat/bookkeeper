@@ -21,9 +21,9 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import java.util.Random;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.bookkeeper.proto.BookkeeperInternalCallbacks.GenericCallback;
@@ -76,7 +76,10 @@ public class OrderedSafeExecutor {
             thName.append("-%d");
             ThreadFactoryBuilder tfb = new ThreadFactoryBuilder()
                     .setNameFormat(thName.toString());
-            threads[i] = Executors.newSingleThreadExecutor(tfb.build());
+            threads[i] = new ThreadPoolExecutor(1, 1,
+                    0L, TimeUnit.MILLISECONDS,
+                    new UnboundArrayBlockingQueue<Runnable>(),
+                    tfb.build());
             final int tid = i;
             try {
                 threads[i].submit(new SafeRunnable() {

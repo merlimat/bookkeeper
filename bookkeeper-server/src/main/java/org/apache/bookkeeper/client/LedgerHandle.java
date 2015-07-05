@@ -30,7 +30,6 @@ import java.util.Arrays;
 import java.util.Enumeration;
 import java.util.List;
 import java.util.Queue;
-import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -48,6 +47,7 @@ import org.apache.bookkeeper.stats.Counter;
 import org.apache.bookkeeper.stats.Gauge;
 import org.apache.bookkeeper.util.OrderedSafeExecutor.OrderedSafeGenericCallback;
 import org.apache.bookkeeper.util.SafeRunnable;
+import org.apache.bookkeeper.util.UnboundArrayBlockingQueue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -79,7 +79,7 @@ public class LedgerHandle {
     final static public long INVALID_ENTRY_ID = BookieProtocol.INVALID_ENTRY_ID;
 
     final AtomicInteger blockAddCompletions = new AtomicInteger(0);
-    final Queue<PendingAddOp> pendingAddOps = new ConcurrentLinkedQueue<PendingAddOp>();
+    final Queue<PendingAddOp> pendingAddOps = new UnboundArrayBlockingQueue<PendingAddOp>();
 
     final Counter ensembleChangeCounter;
     final Counter lacUpdateHitsCounter;
