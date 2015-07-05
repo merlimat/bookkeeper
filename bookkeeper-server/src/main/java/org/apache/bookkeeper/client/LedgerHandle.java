@@ -546,8 +546,8 @@ public class LedgerHandle {
 
     public void asyncAddEntry(ByteBuf data, final AddCallback cb, final Object ctx) {
         data.retain();
-        PendingAddOp op = new PendingAddOp(LedgerHandle.this, cb, ctx);
-        doAsyncAddEntry(op, data, cb, ctx);
+        PendingAddOp op = PendingAddOp.create(this, data, cb, ctx);
+        doAsyncAddEntry(op);
     }
 
     /**
@@ -561,17 +561,17 @@ public class LedgerHandle {
      */
     void asyncRecoveryAddEntry(final byte[] data, final int offset, final int length,
                                final AddCallback cb, final Object ctx) {
-        PendingAddOp op = new PendingAddOp(LedgerHandle.this, cb, ctx).enableRecoveryAdd();
-        doAsyncAddEntry(op, Unpooled.wrappedBuffer(data, offset, length), cb, ctx);
+        PendingAddOp op = PendingAddOp.create(this, Unpooled.wrappedBuffer(data, offset, length), cb, ctx)
+                .enableRecoveryAdd();
+        doAsyncAddEntry(op);
     }
 
-    private void doAsyncAddEntry(final PendingAddOp op, final ByteBuf data, final AddCallback cb, final Object ctx) {
+    private void doAsyncAddEntry(final PendingAddOp op) {
         if (throttler != null) {
             throttler.acquire();
         }
 
         final long entryId;
-        final long currentLength;
         boolean wasClosed = false;
         synchronized(this) {
             // synchronized on this to ensure that
@@ -580,10 +580,9 @@ public class LedgerHandle {
             if (metadata.isClosed()) {
                 wasClosed = true;
                 entryId = -1;
-                currentLength = 0;
             } else {
                 entryId = ++lastAddPushed;
-                currentLength = addToLength(data.readableBytes());
+                op.currentLedgerLength = addToLength(op.payload.readableBytes());
                 op.setEntryId(entryId);
                 pendingAddOps.add(op);
             }
@@ -596,8 +595,8 @@ public class LedgerHandle {
                     @Override
                     public void safeRun() {
                         LOG.warn("Attempt to add to closed ledger: {}", ledgerId);
-                        cb.addComplete(BKException.Code.LedgerClosedException,
-                                LedgerHandle.this, INVALID_ENTRY_ID, ctx);
+                        op.cb.addComplete(BKException.Code.LedgerClosedException,
+                                LedgerHandle.this, INVALID_ENTRY_ID, op.ctx);
                     }
                     @Override
                     public String toString() {
@@ -605,28 +604,17 @@ public class LedgerHandle {
                     }
                 });
             } catch (RejectedExecutionException e) {
-                cb.addComplete(bk.getReturnRc(BKException.Code.InterruptedException),
-                        LedgerHandle.this, INVALID_ENTRY_ID, ctx);
+                op.cb.addComplete(bk.getReturnRc(BKException.Code.InterruptedException),
+                        LedgerHandle.this, INVALID_ENTRY_ID, op.ctx);
             }
             return;
         }
 
         try {
-            bk.mainWorkerPool.submit(new SafeRunnable() {
-                @Override
-                public void safeRun() {
-                    ByteBuf toSend = macManager.computeDigestAndPackageForSending(entryId, lastAddConfirmed,
-                            currentLength, data);
-                    try {
-                        op.initiate(toSend, data.readableBytes());
-                    } finally {
-                        toSend.release();
-                    }
-                }
-            });
+            bk.mainWorkerPool.submit(op);
         } catch (RejectedExecutionException e) {
-            cb.addComplete(bk.getReturnRc(BKException.Code.InterruptedException),
-                    LedgerHandle.this, INVALID_ENTRY_ID, ctx);
+            op.cb.addComplete(bk.getReturnRc(BKException.Code.InterruptedException),
+                    LedgerHandle.this, INVALID_ENTRY_ID, op.ctx);
         }
     }
 
