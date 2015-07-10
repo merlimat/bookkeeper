@@ -81,7 +81,7 @@ public class BookieProtoEncoding {
             }
         };
 
-        private final static byte[] emptyMasterKey = new byte[0];
+        private final static byte[] emptyMasterKey = new byte[20];
 
         RequestEnDeCoderPreV3(ExtensionRegistry extensionRegistry) {
             this.extensionRegistry = extensionRegistry;
