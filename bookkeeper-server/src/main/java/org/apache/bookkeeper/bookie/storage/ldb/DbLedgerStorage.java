@@ -1,6 +1,7 @@
 package org.apache.bookkeeper.bookie.storage.ldb;
 
 import static com.google.common.base.Preconditions.checkArgument;
+import io.netty.buffer.ByteBuf;
 
 import java.io.IOException;
 import java.util.List;
@@ -41,10 +42,7 @@ import com.google.common.util.concurrent.RateLimiter;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.protobuf.ByteString;
 
-import io.netty.buffer.ByteBuf;
-
 public class DbLedgerStorage implements CompactableLedgerStorage {
-    final static Logger LOG = LoggerFactory.getLogger(DbLedgerStorage.class);
 
     private EntryLogger entryLogger;
 
@@ -419,7 +417,7 @@ public class DbLedgerStorage implements CompactableLedgerStorage {
 
                 ByteBuf content = entryLogger.readEntry(ledgerId, entryId, entryLocation);
 
-                readCache.put(ledgerId, entryId, content);
+                readCache.putNoCopy(ledgerId, entryId, content);
                 entryId++;
                 count++;
                 size += content.readableBytes();
