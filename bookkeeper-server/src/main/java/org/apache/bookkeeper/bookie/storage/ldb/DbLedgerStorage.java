@@ -63,9 +63,8 @@ public class DbLedgerStorage implements CompactableLedgerStorage {
     private final AtomicLong writeCacheSizeTrimmed = new AtomicLong(0);
     private final ReentrantReadWriteLock writeCacheMutex = new ReentrantReadWriteLock();
 
-    private final RateLimiter writeRateLimiter = RateLimiter.create(5000);
-    private final RateLimiter readRateLimiter = RateLimiter.create(100);
-    private final AtomicBoolean isThrottlingRequests = new AtomicBoolean(false);
+    private final AtomicBoolean hasFlushBeenTriggered = new AtomicBoolean(false);
+    private final AtomicBoolean isFlushInProgress = new AtomicBoolean(false);
 
     private final ExecutorService executor = Executors
             .newCachedThreadPool(new ThreadFactoryBuilder().setNameFormat("db-storage-%s").build());
@@ -82,6 +81,8 @@ public class DbLedgerStorage implements CompactableLedgerStorage {
 
     private static final int DEFAULT_READ_AHEAD_CACHE_BATCH_SIZE = 100;
     private static final int MB = 1024 * 1024;
+
+    private static final int DEFAULT_SLEEP_TIME_MS_WHEN_FLUSH_IN_PROGRESS = 10;
 
     private long writeCacheMaxSize;
 
@@ -292,29 +293,33 @@ public class DbLedgerStorage implements CompactableLedgerStorage {
             log.debug("Add entry. {}@{}", ledgerId, entryId);
         }
 
-        if (isThrottlingRequests.get()) {
-            writeRateLimiter.acquire();
-        }
-
+        // Waits if the write cache is being switched for a flush
         writeCacheMutex.readLock().lock();
         try {
+            if (writeCache.size() >= writeCacheMaxSize) {
+                waitIfFlushInProgress();
+
+                // If the flush has already been triggered or flush has already switched the cache, we don't need to
+                // trigger another flush
+                if (writeCache.size() >= writeCacheMaxSize && hasFlushBeenTriggered.compareAndSet(false, true)) {
+                    // Trigger an early flush in background
+                    executor.execute(new Runnable() {
+                        @Override
+                        public void run() {
+                            try {
+                                flush();
+                            } catch (IOException e) {
+                                log.error("Error during flush", e);
+                            }
+                        }
+                    });
+                }
+            }
             writeCache.put(ledgerId, entryId, entry);
+        } catch (InterruptedException e) {
+            throw new IOException(e);
         } finally {
             writeCacheMutex.readLock().unlock();
-        }
-
-        if (writeCache.size() > writeCacheMaxSize && isThrottlingRequests.compareAndSet(false, true)) {
-            // Trigger an early flush in background
-            executor.submit(new Runnable() {
-                @Override
-                public void run() {
-                    try {
-                        flush();
-                    } catch (IOException e) {
-                        log.error("Error during flush", e);
-                    }
-                }
-            });
         }
 
         recordSuccessfulEvent(addEntryStats, startTime);
@@ -360,11 +365,6 @@ public class DbLedgerStorage implements CompactableLedgerStorage {
             recordSuccessfulEvent(readEntryStats, startTime);
             readCache.invalidate(ledgerId, entryId);
             return entry;
-        }
-
-        // When reading from db we want to avoid that too many reads to affect the flush time
-        if (isThrottlingRequests.get()) {
-            readRateLimiter.acquire();
         }
 
         // Read from main storage
@@ -512,6 +512,7 @@ public class DbLedgerStorage implements CompactableLedgerStorage {
         long startTime = MathUtils.nowInNano();
 
         writeCacheMutex.writeLock().lock();
+        isFlushInProgress.compareAndSet(false, true);
 
         long sizeTrimmed;
         try {
@@ -523,8 +524,8 @@ public class DbLedgerStorage implements CompactableLedgerStorage {
 
             sizeTrimmed = writeCacheSizeTrimmed.getAndSet(0);
 
-            // Write cache is empty now, so we can accept writes at full speed again
-            isThrottlingRequests.set(false);
+            // since the cache is switched, we can allow flush to be triggered
+            hasFlushBeenTriggered.set(false);
         } finally {
             writeCacheMutex.writeLock().unlock();
         }
@@ -563,6 +564,7 @@ public class DbLedgerStorage implements CompactableLedgerStorage {
 
         // Discard all the entry from the write cache, since they're now persisted
         writeCacheBeingFlushed.clear();
+        isFlushInProgress.set(false);
 
         long flushTime = MathUtils.elapsedNanos(startTime);
         double flushThroughput = sizeToFlush / 1024 / 1024 / flushTime / 1e9;
@@ -643,6 +645,12 @@ public class DbLedgerStorage implements CompactableLedgerStorage {
         }
 
         entryLocationIndex.updateLocations(locations);
+    }
+
+    private void waitIfFlushInProgress() throws InterruptedException {
+        while (isFlushInProgress.get()) {
+            Thread.sleep(DEFAULT_SLEEP_TIME_MS_WHEN_FLUSH_IN_PROGRESS);
+        }
     }
 
     // No mbeans to expose
