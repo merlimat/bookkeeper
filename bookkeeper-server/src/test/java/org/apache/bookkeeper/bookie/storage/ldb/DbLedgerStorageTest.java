@@ -12,7 +12,6 @@ import java.io.IOException;
 import java.util.List;
 
 import org.apache.bookkeeper.bookie.Bookie;
-import org.apache.bookkeeper.bookie.Bookie.EntryTrimmedException;
 import org.apache.bookkeeper.bookie.Bookie.NoEntryException;
 import org.apache.bookkeeper.bookie.BookieException;
 import org.apache.bookkeeper.bookie.EntryLogger;
@@ -288,7 +287,7 @@ public class DbLedgerStorageTest {
         try {
             storage.getEntry(1, 1);
             fail("Entry doesn't exist");
-        } catch (EntryTrimmedException e) {
+        } catch (NoEntryException e) {
             // Ok, entry doesn't exist
         }
 
@@ -331,7 +330,7 @@ public class DbLedgerStorageTest {
         try {
             storage.getEntry(1, 1);
             fail("Entry doesn't exist");
-        } catch (EntryTrimmedException e) {
+        } catch (NoEntryException e) {
             // Ok, entry doesn't exist
         }
 
@@ -343,7 +342,7 @@ public class DbLedgerStorageTest {
         try {
             storage.getEntry(1, 1);
             fail("Entry doesn't exist");
-        } catch (EntryTrimmedException e) {
+        } catch (NoEntryException e) {
             // Ok, entry doesn't exist
         }
 
