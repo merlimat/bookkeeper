@@ -384,7 +384,7 @@ public class DbLedgerStorage implements CompactableLedgerStorage {
         } catch (NoEntryException e) {
             recordFailedEvent(readEntryStats, startTime);
 
-            if (ledgerExists(ledgerId)) {
+            if (ledgerExists(ledgerId) && trimEnabled) {
                 // We couldn't find the entry and we have other entries past that one entry, we can assume the entry was
                 // already trimmed by the client
                 throw new Bookie.EntryTrimmedException(e.getLedger(), e.getEntry());

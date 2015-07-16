@@ -183,7 +183,9 @@ public class LedgerMetadataIndex implements Closeable {
                 log.debug("Inserting new ledger {}", ledgerId);
             }
         } else {
-            if (masterKey.length > 0 && !Arrays.equals(ledgerData.getMasterKey().toByteArray(), masterKey)) {
+            byte[] storedMasterKey = ledgerData.getMasterKey().toByteArray();
+            if (!Arrays.equals(storedMasterKey, masterKey) && storedMasterKey.length > 0
+                    && !isArrayAllZeros(masterKey)) {
                 log.warn("Ledger {} masterKey in db can only be set once.", ledgerId);
                 throw new IOException(BookieException.create(BookieException.Code.IllegalOpException));
             }
@@ -224,6 +226,15 @@ public class LedgerMetadataIndex implements Closeable {
             log.debug("Persisting deletes of ledgers", deletes.size());
         }
         ledgersDb.delete(deletes);
+    }
+
+    private static final boolean isArrayAllZeros(final byte[] array) {
+        int sum = 0;
+        for (byte b : array) {
+            sum |= b;
+        }
+
+        return sum == 0;
     }
 
     private static final Logger log = LoggerFactory.getLogger(LedgerMetadataIndex.class);

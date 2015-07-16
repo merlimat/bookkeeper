@@ -85,6 +85,7 @@ class WriteEntryProcessor extends PacketProcessorBase implements WriteCallback {
             sendResponse(rc,
                          ResponseBuilder.buildErrorResponse(rc, add),
                          requestProcessor.addRequestStats);
+            add.recycle();
         }
     }
 
@@ -101,5 +102,7 @@ class WriteEntryProcessor extends PacketProcessorBase implements WriteCallback {
         sendResponse(rc,
                      ResponseBuilder.buildAddResponse(request),
                      requestProcessor.addRequestStats);
+        
+        ((BookieProtocol.AddRequest) request).recycle();
     }
 }

@@ -26,7 +26,6 @@ import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.Enumeration;
 import java.util.HashSet;
-import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Queue;
 import java.util.Set;
@@ -45,6 +44,8 @@ import org.apache.bookkeeper.stats.OpStatsLogger;
 import org.apache.bookkeeper.util.MathUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.carrotsearch.hppc.IntArrayList;
 
 /**
  * Sequence of entries of a ledger that represents a pending read operation.
@@ -81,7 +82,7 @@ class PendingReadOp implements Enumeration<LedgerEntry>, ReadEntryCallback {
         int numMissedEntryReads = 0;
 
         final ArrayList<BookieSocketAddress> ensemble;
-        final List<Integer> writeSet;
+        final IntArrayList writeSet;
         final BitSet sentReplicas;
         final BitSet erroredReplicas;
 

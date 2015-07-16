@@ -21,9 +21,10 @@
 
 package org.apache.bookkeeper.client;
 
-import java.util.List;
 import java.util.Set;
 import java.util.HashSet;
+
+import com.carrotsearch.hppc.IntArrayList;
 import com.google.common.collect.Sets;
 
 import org.junit.Test;
@@ -39,7 +40,7 @@ public class RoundRobinDistributionScheduleTest {
     public void testDistributionSchedule() throws Exception {
         RoundRobinDistributionSchedule schedule = new RoundRobinDistributionSchedule(3, 2, 5);
 
-        List<Integer> wSet = schedule.getWriteSet(1);
+        IntArrayList wSet = schedule.getWriteSet(1);
         assertEquals("Write set is wrong size", wSet.size(), 3);
 
         DistributionSchedule.AckSet ackSet = schedule.getAckSet();

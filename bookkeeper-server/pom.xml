@@ -189,6 +189,11 @@
       <artifactId>netty-all</artifactId>
       <version>4.0.27.Final</version>
     </dependency>
+    <dependency>
+      <groupId>com.carrotsearch</groupId>
+      <artifactId>hppc</artifactId>
+      <version>0.7.1</version>
+    </dependency>
   </dependencies>
   <build>
     <plugins>
