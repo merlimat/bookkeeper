@@ -292,14 +292,12 @@ public class UnboundArrayBlockingQueue<E> extends AbstractList<E>implements Bloc
 
     @Override
     public void put(E o) throws InterruptedException {
-        // The mechanism to await and signal when the queue is full is not implemented
-        throw new UnsupportedOperationException();
+        offer(o);
     }
 
     @Override
     public boolean offer(E o, long timeout, TimeUnit unit) throws InterruptedException {
-        // The mechanism to await and signal when the queue is full is not implemented
-        throw new UnsupportedOperationException();
+        return offer(o);
     }
 
     @SuppressWarnings("unchecked")
