@@ -273,6 +273,40 @@ public class BookKeeperTest extends BaseTestCase {
         latch.await();
     }
 
+    /**
+     * Tests that issuing multiple reads for the same entry at the same time works as expected.
+     * 
+     * @throws Exception
+     */
+    @Test(timeout = 20000)
+    public void testDoubleReadWithV2Protocol() throws Exception {
+        ClientConfiguration conf = new ClientConfiguration(baseClientConf);
+        conf.setUseV2WireProtocol(true);
+        BookKeeperTestClient bkc = new BookKeeperTestClient(conf);
+        LedgerHandle lh = bkc.createLedger(digestType, "".getBytes());
+
+        lh.addEntry("test".getBytes());
+
+        // Read the same entry more times asynchronously
+        final int N = 10;
+        final CountDownLatch latch = new CountDownLatch(N);
+        for (int i = 0; i < N; i++) {
+            lh.asyncReadEntries(0, 0, new ReadCallback() {
+                public void readComplete(int rc, LedgerHandle lh,
+                                         Enumeration<LedgerEntry> seq, Object ctx) {
+                    if (rc == BKException.Code.OK) {
+                        latch.countDown();
+                    } else {
+                        fail("Read fail");
+                    }
+                }
+            }, null);
+        }
+
+        latch.await();
+        bkc.close();
+    }
+
     @Test(timeout=60000)
     public void testTrimLedger() throws Exception {
         LedgerHandle lh = bkc.createLedger(3, 3, DigestType.CRC32, "testPasswd".getBytes());

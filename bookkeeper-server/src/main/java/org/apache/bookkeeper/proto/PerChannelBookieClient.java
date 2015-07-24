@@ -56,6 +56,8 @@ import org.apache.commons.lang.SystemUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.google.common.collect.LinkedListMultimap;
+import com.google.common.collect.ListMultimap;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.ExtensionRegistry;
 
@@ -108,6 +110,11 @@ public class PerChannelBookieClient extends ChannelInboundHandlerAdapter {
     final int readEntryTimeout;
 
     private final ConcurrentHashMap<CompletionKey, CompletionValue> completionObjects = new ConcurrentHashMap<CompletionKey, CompletionValue>();
+
+    // Map that hold duplicated read requests. The idea is to only use this map (synchronized) when there is a duplicate
+    // read request for the same ledgerId/entryId
+    private final ListMultimap<CompletionKey, CompletionValue> completionObjectsV2Conflicts = LinkedListMultimap
+            .create();
 
     private final StatsLogger statsLogger;
     private final OpStatsLogger readEntryOpLogger;
@@ -558,13 +565,14 @@ public class PerChannelBookieClient extends ChannelInboundHandlerAdapter {
 
         final Object readRequest = request;
         final CompletionKey completionKey = completion;
-        CompletionValue existingValue = completionObjects.putIfAbsent(completion, new ReadCompletion(readEntryOpLogger, cb,
-                ctx, ledgerId, entryId, scheduleTimeout(completion, readEntryTimeout)));
+        ReadCompletion readCompletion = new ReadCompletion(readEntryOpLogger, cb,
+                ctx, ledgerId, entryId, scheduleTimeout(completion, readEntryTimeout));
+        CompletionValue existingValue = completionObjects.putIfAbsent(completion, readCompletion);
         if (existingValue != null) {
-            // There's a pending read request on same ledger/entry. This is not supported in V2 protocol
-            LOG.warn("Failing concurrent request to read at ledger: {} entry: {}", ledgerId, entryId);
-            cb.readEntryComplete(BKException.Code.UnexpectedConditionException, ledgerId, entryId, null, ctx);
-            return;
+            // There's a pending read request on same ledger/entry. Use the multimap to track all of them
+            synchronized (this) {
+                completionObjectsV2Conflicts.put(completionKey, readCompletion);
+            }
         }
 
         final Channel c = channel;
@@ -663,7 +671,17 @@ public class PerChannelBookieClient extends ChannelInboundHandlerAdapter {
     void errorOutReadKey(final CompletionKey key, final int rc) {
         LOG.debug("Removing completion key: {}", key);
         ReadCompletion completion = (ReadCompletion) completionObjects.remove(key);
+        if (completion == null) {
+            // If there's no completion object here, try in the multimap
+            synchronized (this) {
+                if (completionObjectsV2Conflicts.containsKey(key)) {
+                    completion = (ReadCompletion) completionObjectsV2Conflicts.get(key).get(0);
+                    completionObjectsV2Conflicts.remove(key, completion);
+                }
+            }
+        }
 
+        // If it's still null, give up
         if (null == completion) {
             return;
         }
@@ -840,7 +858,17 @@ public class PerChannelBookieClient extends ChannelInboundHandlerAdapter {
         final StatusCode status = getStatusCodeFromErrorCode(response.errorCode);
         
         V2CompletionKey key = V2CompletionKey.get(this, ledgerId, entryId, operationType);
-        final CompletionValue completionValue = completionObjects.remove(key);
+        CompletionValue completionValue = completionObjects.remove(key);
+        if (completionValue == null) {
+            // If there's no completion object here, try in the multimap
+            synchronized (this) {
+                if (completionObjectsV2Conflicts.containsKey(key)) {
+                    completionValue = completionObjectsV2Conflicts.get(key).get(0);
+                    completionObjectsV2Conflicts.remove(key, completionValue);
+                }
+            }
+        }
+
         key.recycle();
 
         if (null == completionValue) {
@@ -851,19 +879,20 @@ public class PerChannelBookieClient extends ChannelInboundHandlerAdapter {
             }
         } else {
             long orderingKey = completionValue.ledgerId;
+            final CompletionValue finalCompletionValue = completionValue;
             
             executor.submitOrdered(orderingKey, new SafeRunnable() {
                 @Override
                 public void safeRun() {
                     switch (operationType) {
                         case ADD_ENTRY: {
-                            handleAddResponse(status, ledgerId, entryId, completionValue);
+                            handleAddResponse(status, ledgerId, entryId, finalCompletionValue);
                             response.recycle();
                             break;
                         }
                         case READ_ENTRY: {
                             BookieProtocol.ReadResponse readResponse = (BookieProtocol.ReadResponse) response;
-                            handleReadResponse(status, readResponse.getLedgerId(), readResponse.getEntryId(), readResponse.data, completionValue);
+                            handleReadResponse(status, readResponse.getLedgerId(), readResponse.getEntryId(), readResponse.data, finalCompletionValue);
                             readResponse.recycle();
                             break;
                         }
