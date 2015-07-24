@@ -61,11 +61,9 @@ import io.netty.util.concurrent.GenericFutureListener;
 
 import java.io.IOException;
 import java.net.SocketAddress;
-import java.nio.channels.ClosedChannelException;
 import java.util.ArrayDeque;
 import java.util.Collections;
 import java.util.Collection;
-import java.util.Objects;
 import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -115,19 +113,14 @@ import org.apache.bookkeeper.util.SafeRunnable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.google.common.collect.Sets;
-import com.google.protobuf.ExtensionRegistry;
-import io.netty.buffer.ByteBufAllocator;
-import io.netty.buffer.UnpooledByteBufAllocator;
-import java.net.SocketAddress;
+import com.google.common.collect.LinkedListMultimap;
+import com.google.common.collect.ListMultimap;
 
-import java.net.SocketAddress;
 import java.security.cert.Certificate;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import javax.net.ssl.SSLPeerUnverifiedException;
-import org.apache.bookkeeper.auth.BookKeeperPrincipal;
 
 /**
  * This class manages all details of connection to a particular bookie. It also
@@ -161,6 +154,11 @@ public class PerChannelBookieClient extends ChannelInboundHandlerAdapter {
     final int startTLSTimeout;
 
     private final ConcurrentHashMap<CompletionKey, CompletionValue> completionObjects = new ConcurrentHashMap<CompletionKey, CompletionValue>();
+
+    // Map that hold duplicated read requests. The idea is to only use this map (synchronized) when there is a duplicate
+    // read request for the same ledgerId/entryId
+    private final ListMultimap<CompletionKey, CompletionValue> completionObjectsV2Conflicts = LinkedListMultimap
+            .create();
 
     private final StatsLogger statsLogger;
     private final OpStatsLogger readEntryOpLogger;
@@ -610,14 +608,13 @@ public class PerChannelBookieClient extends ChannelInboundHandlerAdapter {
                     .build();
         }
 
-        CompletionValue completion = new ReadCompletion(completionKey,
-                                                        cb, ctx,
-                                                        ledgerId, entryId);
-        if (completionObjects.putIfAbsent(
-                    completionKey, completion) != null) {
-            // We cannot have more than 1 pending read on the same ledger/entry in the v2 protocol
-            completion.errorOut(BKException.Code.BookieHandleNotAvailableException);
-            return;
+        ReadCompletion readCompletion = new ReadCompletion(completionKey, cb, ctx, ledgerId, entryId);
+        CompletionValue existingValue = completionObjects.putIfAbsent(completionKey, readCompletion);
+        if (existingValue != null) {
+            // There's a pending read request on same ledger/entry. Use the multimap to track all of them
+            synchronized (this) {
+                completionObjectsV2Conflicts.put(completionKey, readCompletion);
+            }
         }
 
         writeAndFlush(channel, completionKey, request);
@@ -732,14 +729,18 @@ public class PerChannelBookieClient extends ChannelInboundHandlerAdapter {
                     .build();
         }
 
-        CompletionValue completion = new ReadCompletion(completionKey, cb,
-                                                        ctx, ledgerId, entryId);
-        CompletionValue existingValue = completionObjects.putIfAbsent(
-                completionKey, completion);
+        ReadCompletion readCompletion = new ReadCompletion(completionKey, cb, ctx, ledgerId, entryId);
+        CompletionValue existingValue = completionObjects.putIfAbsent(completionKey, readCompletion);
         if (existingValue != null) {
-            // There's a pending read request on same ledger/entry. This is not supported in V2 protocol
-            LOG.warn("Failing concurrent request to read at ledger: {} entry: {}", ledgerId, entryId);
-            completion.errorOut(BKException.Code.UnexpectedConditionException);
+            // There's a pending read request on same ledger/entry. Use the multimap to track all of them
+            synchronized (this) {
+                completionObjectsV2Conflicts.put(completionKey, readCompletion);
+            }
+        }
+
+        final Channel c = channel;
+        if (c == null) {
+            errorOutReadKey(completionKey);
             return;
         }
 
@@ -844,6 +845,56 @@ public class PerChannelBookieClient extends ChannelInboundHandlerAdapter {
             LOG.warn("Operation {} failed", requestToString(request), e);
             errorOut(key);
         }
+    }
+    
+    void errorOutReadKey(final CompletionKey key) {
+        errorOutReadKey(key, BKException.Code.BookieHandleNotAvailableException);
+    }
+
+    void errorOutReadKey(final CompletionKey key, final int rc) {
+        if (LOG.isDebugEnabled()) {
+            LOG.debug("Removing completion key: {}", key);
+        }
+        ReadCompletion readCompletion = (ReadCompletion) completionObjects.remove(key);
+        if (readCompletion == null) {
+            // If there's no completion object here, try in the multimap
+            synchronized (this) {
+                if (completionObjectsV2Conflicts.containsKey(key)) {
+                    readCompletion = (ReadCompletion) completionObjectsV2Conflicts.get(key).get(0);
+                    completionObjectsV2Conflicts.remove(key, readCompletion);
+                }
+            }
+        }
+
+        // If it's still null, give up
+        if (null == readCompletion) {
+            return;
+        }
+        
+        final ReadCompletion finalReadCompletion = readCompletion;
+        executor.submitOrdered(readCompletion.ledgerId, new SafeRunnable() {
+            @Override
+            public void safeRun() {
+                String bAddress = "null";
+                Channel c = channel;
+                if (c != null && c.remoteAddress() != null) {
+                    bAddress = c.remoteAddress().toString();
+                }
+
+                if (LOG.isDebugEnabled()) {
+                    LOG.debug("Could not write request for reading entry: {} ledger-id: {} bookie: {} rc: {}",
+                            finalReadCompletion.entryId, finalReadCompletion.ledgerId, bAddress, rc);
+                }
+
+                finalReadCompletion.cb.readEntryComplete(rc, finalReadCompletion.ledgerId, finalReadCompletion.entryId,
+                        null, finalReadCompletion.ctx);
+            }
+
+            @Override
+            public String toString() {
+                return String.format("ErrorOutReadKey(%s)", key);
+            }
+        });
     }
 
     private static String requestToString(Object request) {
@@ -997,8 +1048,17 @@ public class PerChannelBookieClient extends ChannelInboundHandlerAdapter {
         final StatusCode status = getStatusCodeFromErrorCode(response.errorCode);
 
         final CompletionKey key = acquireV2Key(ledgerId, entryId, operationType);
-        final CompletionValue completionValue = completionObjects.remove(key);
+        CompletionValue completionValue = completionObjects.remove(key);
         key.release();
+        if (completionValue == null) {
+            // If there's no completion object here, try in the multimap
+            synchronized (this) {
+                if (completionObjectsV2Conflicts.containsKey(key)) {
+                    completionValue = completionObjectsV2Conflicts.get(key).get(0);
+                    completionObjectsV2Conflicts.remove(key, completionValue);
+                }
+            }
+        }
 
         if (null == completionValue) {
             // Unexpected response, so log it. The txnId should have been present.
@@ -1008,15 +1068,15 @@ public class PerChannelBookieClient extends ChannelInboundHandlerAdapter {
             }
         } else {
             long orderingKey = completionValue.ledgerId;
+            final CompletionValue finalCompletionValue = completionValue;
 
             executor.submitOrdered(orderingKey, new SafeRunnable() {
-                    @Override
-                    public void safeRun() {
-                        completionValue.handleV2Response(ledgerId, entryId,
-                                                         status, response);
-                        response.recycle();
-                    }
-                });
+                @Override
+                public void safeRun() {
+                    finalCompletionValue.handleV2Response(ledgerId, entryId, status, response);
+                    response.recycle();
+                }
+            });
         }
     }
 
