@@ -496,12 +496,14 @@ public class PerChannelBookieClient extends ChannelInboundHandlerAdapter {
         }
 
         final CompletionKey completionKey = completion;
-        if (completionObjects.putIfAbsent(completionKey,
-                new ReadCompletion(readEntryOpLogger, cb, ctx, ledgerId, entryId,
-                                   scheduleTimeout(completionKey, readEntryTimeout))) != null) {
-            // We cannot have more than 1 pending read on the same ledger/entry in the v2 protocol
-            cb.readEntryComplete(BKException.Code.BookieHandleNotAvailableException, ledgerId, entryId, null, ctx);
-            return;
+        ReadCompletion readCompletion = new ReadCompletion(readEntryOpLogger, cb,
+                ctx, ledgerId, entryId, scheduleTimeout(completion, readEntryTimeout));
+        CompletionValue existingValue = completionObjects.putIfAbsent(completion, readCompletion);
+        if (existingValue != null) {
+            // There's a pending read request on same ledger/entry. Use the multimap to track all of them
+            synchronized (this) {
+                completionObjectsV2Conflicts.put(completionKey, readCompletion);
+            }
         }
 
         final Channel c = channel;
