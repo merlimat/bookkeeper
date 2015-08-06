@@ -22,10 +22,10 @@ import java.io.IOException;
 import java.nio.channels.ClosedChannelException;
 import java.util.ArrayDeque;
 import java.util.Queue;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.function.BiConsumer;
 
 import org.apache.bookkeeper.auth.ClientAuthProvider;
 import org.apache.bookkeeper.client.BKException;
@@ -52,6 +52,7 @@ import org.apache.bookkeeper.stats.StatsLogger;
 import org.apache.bookkeeper.util.MathUtils;
 import org.apache.bookkeeper.util.OrderedSafeExecutor;
 import org.apache.bookkeeper.util.SafeRunnable;
+import org.apache.bookkeeper.util.collections.ConcurrentOpenHashMap;
 import org.apache.commons.lang.SystemUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -109,7 +110,7 @@ public class PerChannelBookieClient extends ChannelInboundHandlerAdapter {
     final int addEntryTimeout;
     final int readEntryTimeout;
 
-    private final ConcurrentHashMap<CompletionKey, CompletionValue> completionObjects = new ConcurrentHashMap<CompletionKey, CompletionValue>();
+    private final ConcurrentOpenHashMap<CompletionKey, CompletionValue> completionObjects = new ConcurrentOpenHashMap<CompletionKey, CompletionValue>();
 
     // Map that hold duplicated read requests. The idea is to only use this map (synchronized) when there is a duplicate
     // read request for the same ledgerId/entryId
@@ -760,8 +761,10 @@ public class PerChannelBookieClient extends ChannelInboundHandlerAdapter {
         // in case they get a write failure on the socket. The one who
         // successfully removes the key from the map is the one responsible for
         // calling the application callback.
-        for (CompletionKey key : completionObjects.keySet()) {
-            switch (key.operationType) {
+        completionObjects.forEach(new BiConsumer<CompletionKey, CompletionValue>() {
+            @Override
+            public void accept(CompletionKey key, CompletionValue value) {
+                switch (key.operationType) {
                 case ADD_ENTRY:
                     errorOutAddKey(key, rc);
                     break;
@@ -770,8 +773,9 @@ public class PerChannelBookieClient extends ChannelInboundHandlerAdapter {
                     break;
                 default:
                     break;
+                }
             }
-        }
+        });
     }
 
     /**
