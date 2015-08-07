@@ -857,13 +857,10 @@ public class PerChannelBookieClient extends ChannelInboundHandlerAdapter {
     }
 
     private void readV2Response(final BookieProtocol.Response response) {
-        final long ledgerId = response.ledgerId;
-        final long entryId = response.entryId;
-
-        final OperationType operationType = getOperationType(response.getOpCode());
-        final StatusCode status = getStatusCodeFromErrorCode(response.errorCode);
+        OperationType operationType = getOperationType(response.getOpCode());
+        StatusCode status = getStatusCodeFromErrorCode(response.errorCode);
         
-        V2CompletionKey key = V2CompletionKey.get(this, ledgerId, entryId, operationType);
+        V2CompletionKey key = V2CompletionKey.get(this, response.ledgerId, response.entryId, operationType);
         CompletionValue completionValue = completionObjects.remove(key);
         if (completionValue == null) {
             // If there's no completion object here, try in the multimap
@@ -881,34 +878,85 @@ public class PerChannelBookieClient extends ChannelInboundHandlerAdapter {
             // Unexpected response, so log it. The txnId should have been present.
             if (LOG.isDebugEnabled()) {
                 LOG.debug("Unexpected response received from bookie : " + addr + " for type : " + operationType
-                        + " and ledger:entry : " + ledgerId + ":" + entryId);
+                        + " and ledger:entry : " + response.ledgerId + ":" + response.entryId);
             }
         } else {
             long orderingKey = completionValue.ledgerId;
-            final CompletionValue finalCompletionValue = completionValue;
             
-            executor.submitOrdered(orderingKey, new SafeRunnable() {
-                @Override
-                public void safeRun() {
-                    switch (operationType) {
-                        case ADD_ENTRY: {
-                            handleAddResponse(status, ledgerId, entryId, finalCompletionValue);
-                            response.recycle();
-                            break;
-                        }
-                        case READ_ENTRY: {
-                            BookieProtocol.ReadResponse readResponse = (BookieProtocol.ReadResponse) response;
-                            handleReadResponse(status, readResponse.getLedgerId(), readResponse.getEntryId(), readResponse.data, finalCompletionValue);
-                            readResponse.recycle();
-                            break;
-                        }
-                        default:
-                            LOG.error("Unexpected response, type:{} received from bookie:{}, ignoring", operationType, addr);
-                            break;
-                    }
-                }
-            });
+            executor.submitOrdered(orderingKey,
+                    ReadV2ResponseCallback.create(this, status, operationType, response.ledgerId, response.entryId, completionValue, response));
         }
+    }
+
+    private static class ReadV2ResponseCallback extends SafeRunnable {
+        PerChannelBookieClient pcbc;
+        OperationType operationType;
+        StatusCode status;
+        long ledgerId;
+        long entryId;
+        CompletionValue completionValue;
+        BookieProtocol.Response response;
+
+        static ReadV2ResponseCallback create(PerChannelBookieClient pcbc, StatusCode status,
+                OperationType operationType, long ledgerId, long entryId, CompletionValue completionValue,
+                BookieProtocol.Response response) {
+            ReadV2ResponseCallback callback = RECYCLER.get();
+            callback.pcbc = pcbc;
+            callback.status = status;
+            callback.operationType = operationType;
+            callback.ledgerId = ledgerId;
+            callback.entryId = entryId;
+            callback.completionValue = completionValue;
+            callback.response = response;
+            return callback;
+        }
+
+        @Override
+        public void safeRun() {
+            switch (operationType) {
+            case ADD_ENTRY: {
+                pcbc.handleAddResponse(status, ledgerId, entryId, completionValue);
+                response.recycle();
+                break;
+            }
+            case READ_ENTRY: {
+                BookieProtocol.ReadResponse readResponse = (BookieProtocol.ReadResponse) response;
+                pcbc.handleReadResponse(status, readResponse.getLedgerId(), readResponse.getEntryId(),
+                        readResponse.data, completionValue);
+                readResponse.recycle();
+                break;
+            }
+            default:
+                LOG.error("Unexpected response, type:{} received from bookie:{}, ignoring", operationType, pcbc.addr);
+                break;
+            }
+
+            recycle();
+        }
+
+        void recycle() {
+            pcbc = null;
+            status = null;
+            operationType = null;
+            ledgerId = -1;
+            entryId = -1;
+            completionValue = null;
+            response = null;
+            RECYCLER.recycle(this, recyclerHandle);
+        }
+
+        private final Handle recyclerHandle;
+
+        private ReadV2ResponseCallback(Handle recyclerHandle) {
+            this.recyclerHandle = recyclerHandle;
+        }
+
+        private static final Recycler<ReadV2ResponseCallback> RECYCLER = new Recycler<ReadV2ResponseCallback>() {
+            @Override
+            protected ReadV2ResponseCallback newObject(Handle handle) {
+                return new ReadV2ResponseCallback(handle);
+            }
+        };
     }
     
     private static OperationType getOperationType(byte opCode) {
@@ -1146,6 +1194,7 @@ public class PerChannelBookieClient extends ChannelInboundHandlerAdapter {
 
             if (completionKey != null) {
                 completionKey.recycle();
+                completionKey = null;
             }
             RECYCLER.recycle(this, recyclerHandle);
         }
