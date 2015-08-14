@@ -11,7 +11,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.bookkeeper.bookie.Bookie;
@@ -20,13 +19,13 @@ import org.apache.bookkeeper.bookie.storage.ldb.DbLedgerStorageDataFormats.Ledge
 import org.apache.bookkeeper.bookie.storage.ldb.KeyValueStorage.CloseableIterator;
 import org.apache.bookkeeper.stats.Gauge;
 import org.apache.bookkeeper.stats.StatsLogger;
+import org.apache.bookkeeper.util.collections.ConcurrentLongHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Predicate;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
 import com.google.protobuf.ByteString;
 
 /**
@@ -36,7 +35,7 @@ import com.google.protobuf.ByteString;
  */
 public class LedgerMetadataIndex implements Closeable {
     // Contains all ledgers stored in the bookie
-    private final ConcurrentMap<Long, LedgerData> ledgers;
+    private final ConcurrentLongHashMap<LedgerData> ledgers;
     private final AtomicInteger ledgersCount;
 
     private final KeyValueStorage ledgersDb;
@@ -52,7 +51,7 @@ public class LedgerMetadataIndex implements Closeable {
         String ledgersPath = FileSystems.getDefault().getPath(basePath, "ledgers").toFile().toString();
         ledgersDb = new KeyValueStorageLevelDB(ledgersPath);
 
-        ledgers = Maps.newConcurrentMap();
+        ledgers = new ConcurrentLongHashMap<>();
         ledgersCount = new AtomicInteger();
 
         // Read all ledgers from db
@@ -132,7 +131,7 @@ public class LedgerMetadataIndex implements Closeable {
     }
 
     public Iterable<Long> getActiveLedgersInRange(final long firstLedgerId, final long lastLedgerId) throws IOException {
-        return Iterables.filter(ledgers.keySet(), new Predicate<Long>() {
+        return Iterables.filter(ledgers.keys(), new Predicate<Long>() {
             @Override
             public boolean apply(Long ledgerId) {
                 return ledgerId >= firstLedgerId && ledgerId < lastLedgerId;

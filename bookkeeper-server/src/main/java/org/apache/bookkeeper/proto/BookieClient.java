@@ -258,6 +258,15 @@ public class BookieClient implements PerChannelBookieClientFactory {
         };
 
         public void recycle() {
+            bookieClient = null;
+            toSend = null;
+            ledgerId = -1;
+            entryId = -1;
+            addr = null;
+            ctx = null;
+            cb = null;
+            options = -1;
+            masterKey = null;
             RECYCLER.recycle(this, recyclerHandle);
         }
     }
