@@ -761,21 +761,18 @@ public class PerChannelBookieClient extends ChannelInboundHandlerAdapter {
         // in case they get a write failure on the socket. The one who
         // successfully removes the key from the map is the one responsible for
         // calling the application callback.
-        completionObjects.forEach(new BiConsumer<CompletionKey, CompletionValue>() {
-            @Override
-            public void accept(CompletionKey key, CompletionValue value) {
-                switch (key.operationType) {
-                case ADD_ENTRY:
-                    errorOutAddKey(key, rc);
-                    break;
-                case READ_ENTRY:
-                    errorOutReadKey(key, rc);
-                    break;
-                default:
-                    break;
-                }
+        for (CompletionKey key : completionObjects.keys()) {
+            switch (key.operationType) {
+            case ADD_ENTRY:
+                errorOutAddKey(key, rc);
+                break;
+            case READ_ENTRY:
+                errorOutReadKey(key, rc);
+                break;
+            default:
+                break;
             }
-        });
+        }
     }
 
     /**
