@@ -322,14 +322,14 @@ public class BookieClient implements PerChannelBookieClientFactory {
         public void operationComplete(final int rc,
                                       PerChannelBookieClient pcbc) {
             if (rc != BKException.Code.OK) {
+                toSend.release();
                 bookieClient.completeAdd(rc, ledgerId, entryId, addr, cb, ctx);
             } else {
                 pcbc.addEntry(ledgerId, masterKey, entryId,
                               toSend, cb, ctx, options);
+                toSend.release();
+                recycle();
             }
-
-            toSend.release();
-            recycle();
         }
 
         private ChannelReadyForAddEntryCallback(
