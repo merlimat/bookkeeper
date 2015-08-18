@@ -166,13 +166,13 @@ public class ConcurrentOpenHashMap<K, V> {
     /**
      * @return a new list of all keys (makes a copy)
      */
-    List<K> keys() {
+    public List<K> keys() {
         List<K> keys = Lists.newArrayList();
         forEach((key, value) -> keys.add(key));
         return keys;
     }
 
-    List<V> values() {
+    public List<V> values() {
         List<V> values = Lists.newArrayList();
         forEach((key, value) -> values.add(value));
         return values;

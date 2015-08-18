@@ -89,8 +89,8 @@ public class DbLedgerStorageTest {
 
         assertEquals("key", new String(storage.readMasterKey(4)));
 
-        assertEquals(Lists.newArrayList(3l, 4l), Lists.newArrayList(storage.getActiveLedgersInRange(0, 100)));
-        assertEquals(Lists.newArrayList(3l, 4l), Lists.newArrayList(storage.getActiveLedgersInRange(3, 100)));
+        assertEquals(Lists.newArrayList(4l, 3l), Lists.newArrayList(storage.getActiveLedgersInRange(0, 100)));
+        assertEquals(Lists.newArrayList(4l, 3l), Lists.newArrayList(storage.getActiveLedgersInRange(3, 100)));
         assertEquals(Lists.newArrayList(3l), Lists.newArrayList(storage.getActiveLedgersInRange(0, 4)));
 
         // Add / read entries

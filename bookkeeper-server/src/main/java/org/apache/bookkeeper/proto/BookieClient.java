@@ -228,6 +228,7 @@ public class BookieClient implements PerChannelBookieClientFactory {
         @Override
         public void operationComplete(int rc, PerChannelBookieClient pcbc) {
             if (rc != BKException.Code.OK) {
+                toSend.release();
                 try {
                     bookieClient.executor.submitOrdered(ledgerId, new SafeRunnable() {
                         @Override
@@ -241,10 +242,9 @@ public class BookieClient implements PerChannelBookieClientFactory {
                 }
             } else {
                 pcbc.addEntry(ledgerId, masterKey, entryId, toSend, cb, ctx, options);
+                toSend.release();
+                recycle();
             }
-
-            toSend.release();
-            recycle();
         }
 
         private ChannelReadyForAddEntryCallback(Handle recyclerHandle) {
