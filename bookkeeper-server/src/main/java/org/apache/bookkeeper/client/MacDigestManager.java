@@ -1,17 +1,6 @@
 package org.apache.bookkeeper.client;
 
 import static com.google.common.base.Charsets.UTF_8;
-
-import java.security.GeneralSecurityException;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-
-import javax.crypto.Mac;
-import javax.crypto.spec.SecretKeySpec;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 /*
 * Licensed to the Apache Software Foundation (ASF) under one
 * or more contributor license agreements.  See the NOTICE file
@@ -29,13 +18,22 @@ import org.slf4j.LoggerFactory;
 * See the License for the specific language governing permissions and
 * limitations under the License.
 */
-
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufProcessor;
 import io.netty.util.Recycler;
 import io.netty.util.Recycler.Handle;
 
-class MacDigestManager extends DigestManager {
+import java.security.GeneralSecurityException;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+public class MacDigestManager extends DigestManager {
     private final static Logger LOG = LoggerFactory.getLogger(MacDigestManager.class);
 
     public static String DIGEST_ALGORITHM = "SHA-1";
@@ -50,7 +48,7 @@ class MacDigestManager extends DigestManager {
         this.passwd = passwd;
     }
 
-    static byte[] genDigest(String pad, byte[] passwd) throws NoSuchAlgorithmException {
+    public static byte[] genDigest(String pad, byte[] passwd) throws NoSuchAlgorithmException {
         MessageDigest digest = MessageDigest.getInstance(DIGEST_ALGORITHM);
         digest.update(pad.getBytes(UTF_8));
         digest.update(passwd);
