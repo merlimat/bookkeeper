@@ -24,7 +24,6 @@ import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.buffer.ByteBufInputStream;
 import io.netty.buffer.ByteBufOutputStream;
-import io.netty.buffer.ByteBufProcessor;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandler.Sharable;
 import io.netty.channel.ChannelHandlerContext;
@@ -32,8 +31,10 @@ import io.netty.handler.codec.MessageToMessageDecoder;
 import io.netty.handler.codec.MessageToMessageEncoder;
 
 import java.io.IOException;
+import java.security.NoSuchAlgorithmException;
 import java.util.List;
 
+import org.apache.bookkeeper.client.MacDigestManager;
 import org.apache.bookkeeper.proto.BookieProtocol.PacketHeader;
 import org.apache.bookkeeper.util.DoubleByteBuf;
 import org.slf4j.Logger;
@@ -74,14 +75,15 @@ public class BookieProtoEncoding {
     static class RequestEnDeCoderPreV3 implements EnDecoder {
         final ExtensionRegistry extensionRegistry;
 
-        // ByteBufProcessor used to find whether a portion of a byte buf is composed only of 0s
-        private final static ByteBufProcessor zeroByteFinder = new ByteBufProcessor() {
-            public boolean process(byte value) throws Exception {
-                return value == 0;
+        // This empty master key is used when an empty password is provided which is the hash of an empty string
+        private final static byte[] emptyMasterKey;
+        static {
+            try {
+                emptyMasterKey = MacDigestManager.genDigest("ledger", new byte[0]);
+            } catch (NoSuchAlgorithmException e) {
+                throw new RuntimeException(e);
             }
-        };
-
-        private final static byte[] emptyMasterKey = new byte[20];
+        }
 
         RequestEnDeCoderPreV3(ExtensionRegistry extensionRegistry) {
             this.extensionRegistry = extensionRegistry;
@@ -199,9 +201,17 @@ public class BookieProtoEncoding {
         private static byte[] readMasterKey(ByteBuf packet) {
             byte[] masterKey = null;
 
-            // first read master key, if master key is composed only of 0s, we'll avoid to allocated and copy it
-            if (packet.forEachByte(packet.readerIndex(), BookieProtocol.MASTER_KEY_LENGTH, zeroByteFinder) == -1) {
-                // Master key is all 0s
+            // check if the master key is an empty master key
+            boolean isEmptyKey = true;
+            for (int i = 0; i < BookieProtocol.MASTER_KEY_LENGTH; i++) {
+                if (packet.getByte(packet.readerIndex() + i) != emptyMasterKey[i]) {
+                    isEmptyKey = false;
+                    break;
+                }
+            }
+
+            if (isEmptyKey) {
+                // avoid new allocations if incoming master key is empty and use the static master key
                 masterKey = emptyMasterKey;
                 packet.readerIndex(packet.readerIndex() + BookieProtocol.MASTER_KEY_LENGTH);
             } else {
