@@ -24,6 +24,7 @@ public interface BookKeeperServerStats {
 
     public final static String SERVER_SCOPE = "bookkeeper_server";
     public final static String BOOKIE_SCOPE = "bookie";
+    public final static String JVM_SCOPE = "jvm";
 
     public final static String SERVER_STATUS = "SERVER_STATUS";
 
@@ -86,4 +87,16 @@ public interface BookKeeperServerStats {
     public final static String LD_WRITABLE_DIRS = "writable_dirs";
 
     public final static String STORAGE_SCOPE = "storage";
+
+    // JVM Stats
+    public final static String JVM_HEAP_USED  = "HEAP_USED";
+    public final static String JVM_HEAP_TOTAL = "HEAP_TOTAL";
+    public final static String JVM_DIRECT_MEMORY_USED  = "DIRECT_MEMORY_USED";
+    public final static String JVM_DIRECT_MEMORY_TOTAL = "DIRECT_MEMORY_TOTAL";
+    public final static String JVM_GC_YOUNG_TIME = "GC_YOUNG_TIME";
+    public final static String JVM_GC_YOUNG_COUNT = "GC_YOUNG_COUNT";
+    public final static String JVM_GC_OLD_TIME = "GC_OLD_TIME";
+    public final static String JVM_GC_OLD_COUNT = "GC_OLD_COUNT";
+    public final static String JVM_NETTY_POOL_USED = "NETTY_POOL_USED";
+    public final static String JVM_NETTY_POOL_ALLOCATED = "NETTY_POOL_ALLOCATED";
 }

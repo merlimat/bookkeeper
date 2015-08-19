@@ -141,7 +141,7 @@ class BookieNettyServer {
 
     private void listenOn(InetSocketAddress address) throws InterruptedException {
         ServerBootstrap bootstrap = new ServerBootstrap();
-        bootstrap.childOption(ChannelOption.ALLOCATOR, new PooledByteBufAllocator(true));
+        bootstrap.childOption(ChannelOption.ALLOCATOR, PooledByteBufAllocator.DEFAULT);
         bootstrap.group(eventLoopGroup, eventLoopGroup);
         bootstrap.childOption(ChannelOption.TCP_NODELAY, conf.getServerTcpNoDelay());
         bootstrap.childOption(ChannelOption.SO_LINGER, 2);

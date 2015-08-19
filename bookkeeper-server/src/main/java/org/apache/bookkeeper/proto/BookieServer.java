@@ -20,10 +20,29 @@
  */
 package org.apache.bookkeeper.proto;
 
+import static org.apache.bookkeeper.bookie.BookKeeperServerStats.BOOKIE_SCOPE;
+import static org.apache.bookkeeper.bookie.BookKeeperServerStats.JVM_DIRECT_MEMORY_TOTAL;
+import static org.apache.bookkeeper.bookie.BookKeeperServerStats.JVM_DIRECT_MEMORY_USED;
+import static org.apache.bookkeeper.bookie.BookKeeperServerStats.JVM_GC_OLD_COUNT;
+import static org.apache.bookkeeper.bookie.BookKeeperServerStats.JVM_GC_OLD_TIME;
+import static org.apache.bookkeeper.bookie.BookKeeperServerStats.JVM_GC_YOUNG_COUNT;
+import static org.apache.bookkeeper.bookie.BookKeeperServerStats.JVM_GC_YOUNG_TIME;
+import static org.apache.bookkeeper.bookie.BookKeeperServerStats.JVM_HEAP_TOTAL;
+import static org.apache.bookkeeper.bookie.BookKeeperServerStats.JVM_HEAP_USED;
+import static org.apache.bookkeeper.bookie.BookKeeperServerStats.JVM_NETTY_POOL_ALLOCATED;
+import static org.apache.bookkeeper.bookie.BookKeeperServerStats.JVM_NETTY_POOL_USED;
+import static org.apache.bookkeeper.bookie.BookKeeperServerStats.JVM_SCOPE;
+import static org.apache.bookkeeper.bookie.BookKeeperServerStats.SERVER_SCOPE;
+import static org.apache.bookkeeper.replication.ReplicationStats.REPLICATION_SCOPE;
+
 import java.io.File;
 import java.io.IOException;
+import java.lang.management.ManagementFactory;
 import java.net.MalformedURLException;
 import java.net.UnknownHostException;
+
+import javax.management.MalformedObjectNameException;
+import javax.management.ObjectName;
 
 import org.apache.bookkeeper.bookie.Bookie;
 import org.apache.bookkeeper.bookie.BookieCriticalThread;
@@ -36,6 +55,7 @@ import org.apache.bookkeeper.processor.RequestProcessor;
 import org.apache.bookkeeper.replication.AutoRecoveryMain;
 import org.apache.bookkeeper.replication.ReplicationException.CompatibilityException;
 import org.apache.bookkeeper.replication.ReplicationException.UnavailableException;
+import org.apache.bookkeeper.stats.Gauge;
 import org.apache.bookkeeper.stats.NullStatsLogger;
 import org.apache.bookkeeper.stats.StatsLogger;
 import org.apache.bookkeeper.stats.StatsProvider;
@@ -52,9 +72,10 @@ import org.slf4j.LoggerFactory;
 
 import com.google.common.annotations.VisibleForTesting;
 
-import static org.apache.bookkeeper.bookie.BookKeeperServerStats.BOOKIE_SCOPE;
-import static org.apache.bookkeeper.bookie.BookKeeperServerStats.SERVER_SCOPE;
-import static org.apache.bookkeeper.replication.ReplicationStats.REPLICATION_SCOPE;
+import io.netty.buffer.PoolArenaMetric;
+import io.netty.buffer.PoolChunkListMetric;
+import io.netty.buffer.PoolChunkMetric;
+import io.netty.buffer.PooledByteBufAllocator;
 
 /**
  * Implements the server-side part of the BookKeeper protocol.
@@ -99,6 +120,186 @@ public class BookieServer {
         isAutoRecoveryDaemonEnabled = conf.isAutoRecoveryDaemonEnabled();
         if (isAutoRecoveryDaemonEnabled) {
             this.autoRecoveryMain = new AutoRecoveryMain(conf, statsLogger.scope(REPLICATION_SCOPE));
+        }
+
+        StatsLogger jvmStats = statsLogger.scope(JVM_SCOPE);
+
+        jvmStats.registerGauge(JVM_HEAP_USED, new Gauge<Long>() {
+            @Override
+            public Long getDefaultValue() {
+                return 0l;
+            }
+
+            @Override
+            public Long getSample() {
+                return Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory();
+            }
+        });
+
+        jvmStats.registerGauge(JVM_HEAP_TOTAL, new Gauge<Long>() {
+            @Override
+            public Long getDefaultValue() {
+                return 0l;
+            }
+
+            @Override
+            public Long getSample() {
+                return Runtime.getRuntime().totalMemory();
+            }
+        });
+
+        jvmStats.registerGauge(JVM_DIRECT_MEMORY_USED, new Gauge<Long>() {
+            @Override
+            public Long getDefaultValue() {
+                return 0l;
+            }
+
+            @SuppressWarnings("restriction")
+            @Override
+            public Long getSample() {
+                return sun.misc.SharedSecrets.getJavaNioAccess().getDirectBufferPool().getMemoryUsed();
+            }
+        });
+
+        jvmStats.registerGauge(JVM_DIRECT_MEMORY_TOTAL, new Gauge<Long>() {
+            @Override
+            public Long getDefaultValue() {
+                return 0l;
+            }
+
+            @SuppressWarnings("restriction")
+            @Override
+            public Long getSample() {
+                return sun.misc.VM.maxDirectMemory();
+            }
+        });
+
+        jvmStats.registerGauge(JVM_GC_YOUNG_TIME, new Gauge<Long>() {
+            @Override
+            public Long getDefaultValue() {
+                return 0l;
+            }
+
+            @Override
+            public Long getSample() {
+                try {
+                    return (Long) ManagementFactory.getPlatformMBeanServer().getAttribute(youngGenName,
+                            "CollectionTime");
+                } catch (Exception e) {
+                    return -1l;
+                }
+            }
+        });
+
+        jvmStats.registerGauge(JVM_GC_YOUNG_COUNT, new Gauge<Long>() {
+            @Override
+            public Long getDefaultValue() {
+                return 0l;
+            }
+
+            @Override
+            public Long getSample() {
+                try {
+                    return (Long) ManagementFactory.getPlatformMBeanServer().getAttribute(youngGenName,
+                            "CollectionCount");
+                } catch (Exception e) {
+                    return -1l;
+                }
+            }
+        });
+
+        jvmStats.registerGauge(JVM_GC_OLD_TIME, new Gauge<Long>() {
+            @Override
+            public Long getDefaultValue() {
+                return 0l;
+            }
+
+            @Override
+            public Long getSample() {
+                try {
+                    return (Long) ManagementFactory.getPlatformMBeanServer().getAttribute(oldGenName, "CollectionTime");
+                } catch (Exception e) {
+                    return -1l;
+                }
+            }
+        });
+
+        jvmStats.registerGauge(JVM_GC_OLD_COUNT, new Gauge<Long>() {
+            @Override
+            public Long getDefaultValue() {
+                return 0l;
+            }
+
+            @Override
+            public Long getSample() {
+                try {
+                    return (Long) ManagementFactory.getPlatformMBeanServer().getAttribute(oldGenName,
+                            "CollectionCount");
+                } catch (Exception e) {
+                    return -1l;
+                }
+            }
+        });
+
+        jvmStats.registerGauge(JVM_NETTY_POOL_USED, new Gauge<Long>() {
+            @Override
+            public Long getDefaultValue() {
+                return 0l;
+            }
+
+            @Override
+            public Long getSample() {
+                long totalUsed = 0;
+
+                for (PoolArenaMetric arena : PooledByteBufAllocator.DEFAULT.directArenas()) {
+                    for (PoolChunkListMetric list : arena.chunkLists()) {
+                        for (PoolChunkMetric chunk : list) {
+                            int size = chunk.chunkSize();
+                            int used = size - chunk.freeBytes();
+
+                            totalUsed += used;
+                        }
+                    }
+                }
+
+                return totalUsed;
+            }
+        });
+
+        jvmStats.registerGauge(JVM_NETTY_POOL_ALLOCATED, new Gauge<Long>() {
+            @Override
+            public Long getDefaultValue() {
+                return 0l;
+            }
+
+            @Override
+            public Long getSample() {
+                long totalAllocated = 0;
+
+                for (PoolArenaMetric arena : PooledByteBufAllocator.DEFAULT.directArenas()) {
+                    for (PoolChunkListMetric list : arena.chunkLists()) {
+                        for (PoolChunkMetric chunk : list) {
+                            int size = chunk.chunkSize();
+
+                            totalAllocated += size;
+                        }
+                    }
+                }
+
+                return totalAllocated;
+            }
+        });
+    }
+
+    private static ObjectName youngGenName = null;
+    private static ObjectName oldGenName = null;
+
+    static {
+        try {
+            youngGenName = new ObjectName("java.lang:type=GarbageCollector,name=G1 Young Generation");
+            oldGenName = new ObjectName("java.lang:type=GarbageCollector,name=G1 Old Generation");
+        } catch (MalformedObjectNameException e) {
+            // Ok, no G1GC used
         }
     }
 
