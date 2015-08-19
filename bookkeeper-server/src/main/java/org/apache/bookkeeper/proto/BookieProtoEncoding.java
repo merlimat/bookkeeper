@@ -75,6 +75,7 @@ public class BookieProtoEncoding {
     static class RequestEnDeCoderPreV3 implements EnDecoder {
         final ExtensionRegistry extensionRegistry;
 
+        // This empty master key is used when an empty password is provided which is the hash of an empty string
         private final static byte[] emptyMasterKey;
         static {
             try {
@@ -200,6 +201,7 @@ public class BookieProtoEncoding {
         private static byte[] readMasterKey(ByteBuf packet) {
             byte[] masterKey = null;
 
+            // check if the master key is an empty master key
             boolean isEmptyKey = true;
             for (int i = 0; i < BookieProtocol.MASTER_KEY_LENGTH; i++) {
                 if (packet.getByte(packet.readerIndex() + i) != emptyMasterKey[i]) {
@@ -209,6 +211,7 @@ public class BookieProtoEncoding {
             }
 
             if (isEmptyKey) {
+                // avoid new allocations if incoming master key is empty and use the static master key
                 masterKey = emptyMasterKey;
                 packet.readerIndex(packet.readerIndex() + BookieProtocol.MASTER_KEY_LENGTH);
             } else {
