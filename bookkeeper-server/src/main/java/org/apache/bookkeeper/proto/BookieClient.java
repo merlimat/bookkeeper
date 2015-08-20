@@ -191,7 +191,7 @@ public class BookieClient implements PerChannelBookieClientFactory {
             toSend.retain();
 
             client.obtain(ChannelReadyForAddEntryCallback.create(this, toSend, ledgerId, entryId, addr, ctx, cb,
-                    options, masterKey));
+                    options, masterKey), ledgerId);
         } finally {
             closeLock.readLock().unlock();
         }
@@ -297,7 +297,7 @@ public class BookieClient implements PerChannelBookieClientFactory {
                         }
                         pcbc.trim(ledgerId, masterKey, lastEntryId, options);
                     }
-                });
+                }, ledgerId);
         } finally {
             closeLock.readLock().unlock();
         }
@@ -337,7 +337,7 @@ public class BookieClient implements PerChannelBookieClientFactory {
                     }
                     pcbc.readEntryAndFenceLedger(ledgerId, masterKey, entryId, cb, ctx);
                 }
-            });
+            }, ledgerId);
         } finally {
             closeLock.readLock().unlock();
         }
@@ -373,7 +373,7 @@ public class BookieClient implements PerChannelBookieClientFactory {
                     }
                     pcbc.readEntry(ledgerId, entryId, cb, ctx);
                 }
-            });
+            }, ledgerId);
         } finally {
             closeLock.readLock().unlock();
         }

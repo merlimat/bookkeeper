@@ -38,7 +38,7 @@ interface PerChannelBookieClientPool {
      * @param callback
      *          callback to return channel from channel pool.
      */
-    void obtain(GenericCallback<PerChannelBookieClient> callback);
+    void obtain(GenericCallback<PerChannelBookieClient> callback, long key);
 
     /**
      * Disconnect the connections in the pool.

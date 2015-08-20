@@ -27,8 +27,6 @@ import org.apache.bookkeeper.util.MathUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.concurrent.atomic.AtomicInteger;
-
 /**
  *  Provide a simple round-robin style channel pool. We could improve it later to do more
  *  fantastic things.
@@ -41,7 +39,6 @@ class DefaultPerChannelBookieClientPool implements PerChannelBookieClientPool,
     final PerChannelBookieClientFactory factory;
     final BookieSocketAddress address;
     final PerChannelBookieClient[] clients;
-    final AtomicInteger counter = new AtomicInteger(0);
 
     DefaultPerChannelBookieClientPool(PerChannelBookieClientFactory factory,
                                       BookieSocketAddress address,
@@ -68,12 +65,12 @@ class DefaultPerChannelBookieClientPool implements PerChannelBookieClientPool,
     }
 
     @Override
-    public void obtain(GenericCallback<PerChannelBookieClient> callback) {
+    public void obtain(GenericCallback<PerChannelBookieClient> callback, long key) {
         if (1 == clients.length) {
             clients[0].connectIfNeededAndDoOp(callback);
             return;
         }
-        int idx = MathUtils.signSafeMod(counter.getAndIncrement(), clients.length);
+        int idx = MathUtils.signSafeMod(key, clients.length);
         clients[idx].connectIfNeededAndDoOp(callback);
     }
 

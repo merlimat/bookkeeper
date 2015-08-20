@@ -619,7 +619,7 @@ public class LedgerHandle {
         }
 
         try {
-            bk.mainWorkerPool.submit(op);
+            bk.mainWorkerPool.submitOrdered(ledgerId, op);
         } catch (RejectedExecutionException e) {
             op.cb.addComplete(bk.getReturnRc(BKException.Code.InterruptedException),
                     LedgerHandle.this, INVALID_ENTRY_ID, op.ctx);
