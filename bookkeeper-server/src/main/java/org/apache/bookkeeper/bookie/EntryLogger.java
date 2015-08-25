@@ -51,11 +51,11 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.bookkeeper.bookie.LedgerDirsManager.LedgerDirsListener;
@@ -882,6 +882,11 @@ public class EntryLogger {
         ByteBuffer headers = ByteBuffer.allocate(LOGFILE_HEADER_SIZE);
         bc.read(headers, 0);
         headers.flip();
+
+        if (headers.remaining() < LOGFILE_HEADER_SIZE) {
+            // This might occur when the bookie crashed while entry log file was created
+            throw new IOException("Could not find header in the entry log file");
+        }
 
         // Skip marker string "BKLO"
         headers.getInt();
