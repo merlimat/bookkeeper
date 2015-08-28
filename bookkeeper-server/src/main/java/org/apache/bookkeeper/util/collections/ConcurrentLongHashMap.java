@@ -85,6 +85,14 @@ public class ConcurrentLongHashMap<V> {
         return size;
     }
 
+    long getUsedBucketCount() {
+        long usedBucketCount = 0;
+        for (Section<V> s : sections) {
+            usedBucketCount += s.usedBuckets;
+        }
+        return usedBucketCount;
+    }
+
     public long capacity() {
         long capacity = 0;
         for (Section<V> s : sections) {
@@ -334,10 +342,11 @@ public class ConcurrentLongHashMap<V> {
                     V storedValue = values[bucket];
                     if (storedKey == key) {
                         if (value == null || value.equals(storedValue)) {
-                            if (storedValue != EmptyValue && storedValue != DeletedValue) {
-                                --size;
+                            if (storedValue == EmptyValue || storedValue == DeletedValue) {
+                                return null;
                             }
 
+                            --size;
                             V nextValueInArray = values[signSafeMod(bucket + 1, capacity)];
                             if (nextValueInArray == EmptyValue) {
                                 values[bucket] = (V) EmptyValue;
