@@ -114,6 +114,20 @@ public class ConcurrentLongHashMapTest {
     }
 
     @Test
+    public void testNegativeUsedBucketCount() {
+        ConcurrentLongHashMap<String> map = new ConcurrentLongHashMap<>(16, 1);
+
+        map.put(0, "zero");
+        assertEquals(1, map.getUsedBucketCount());
+        map.put(0, "zero1");
+        assertEquals(1, map.getUsedBucketCount());
+        map.remove(0);
+        assertEquals(0, map.getUsedBucketCount());
+        map.remove(0);
+        assertEquals(0, map.getUsedBucketCount());
+    }
+
+    @Test
     public void testRehashing() {
         int n = 16;
         ConcurrentLongHashMap<Integer> map = new ConcurrentLongHashMap<>(n / 2, 1);
