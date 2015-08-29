@@ -371,6 +371,9 @@ public class DbLedgerStorage implements CompactableLedgerStorage {
         try {
             LedgerIndexPage ledgerIndexPage = entryLocationIndex.getLedgerIndexPage(ledgerId, entryId);
             long entryLocation = ledgerIndexPage.getPosition(entryId);
+            if (entryLocation == 0L) {
+                throw new NoEntryException(ledgerId, entryId);
+            }
             ByteBuf content = entryLogger.readEntry(ledgerId, entryId, entryLocation);
 
             // Try to read more entries
