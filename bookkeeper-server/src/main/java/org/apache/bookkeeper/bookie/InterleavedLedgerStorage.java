@@ -22,7 +22,6 @@
 package org.apache.bookkeeper.bookie;
 
 import io.netty.buffer.ByteBuf;
-import io.netty.buffer.Unpooled;
 
 import java.io.File;
 import java.io.IOException;
@@ -360,6 +359,10 @@ public class InterleavedLedgerStorage implements CompactableLedgerStorage, Entry
     @Override
     public EntryLogger getEntryLogger() {
         return entryLogger;
+    }
+
+    @Override
+    public void forceIndexCompaction() throws IOException {
     }
 
     @Override

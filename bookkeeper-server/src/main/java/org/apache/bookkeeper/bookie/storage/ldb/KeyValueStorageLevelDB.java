@@ -2,8 +2,10 @@ package org.apache.bookkeeper.bookie.storage.ldb;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.Map.Entry;
+import java.util.concurrent.TimeUnit;
 
 import org.fusesource.leveldbjni.JniDBFactory;
 import org.iq80.leveldb.CompressionType;
@@ -13,11 +15,14 @@ import org.iq80.leveldb.Options;
 import org.iq80.leveldb.ReadOptions;
 import org.iq80.leveldb.WriteBatch;
 import org.iq80.leveldb.WriteOptions;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.common.primitives.UnsignedBytes;
 
 public class KeyValueStorageLevelDB implements KeyValueStorage {
 
+    private final String path;
     private final DB db;
 
     private static final WriteOptions Sync = new WriteOptions().sync(true);
@@ -26,6 +31,7 @@ public class KeyValueStorageLevelDB implements KeyValueStorage {
     private static final ReadOptions Cache = new ReadOptions().fillCache(true);
 
     public KeyValueStorageLevelDB(String path) throws IOException {
+        this.path = path;
         Options options = new Options();
         options.createIfMissing(true);
         options.compressionType(CompressionType.SNAPPY);
@@ -33,6 +39,8 @@ public class KeyValueStorageLevelDB implements KeyValueStorage {
         options.cacheSize(512 * 1024 * 1024);
 
         db = JniDBFactory.factory.open(new File(path), options);
+
+        forceCompaction();
     }
 
     @Override
@@ -211,4 +219,23 @@ public class KeyValueStorageLevelDB implements KeyValueStorage {
             }
         };
     }
+
+    private static final byte[] firstKey = new byte[] {0};
+    private static final byte[] lastKey = new byte[32];
+    static {
+        Arrays.fill(lastKey, (byte)0xFF);
+    }
+
+    @Override
+    public void forceCompaction() throws IOException {
+        log.info("Forcing compaction on levelDB database at {}", path);
+        long start = System.nanoTime();
+
+        db.compactRange(firstKey, lastKey);
+
+        long nanosElapsed = System.nanoTime() - start;
+        log.info("Compaction done ({} ms)", TimeUnit.NANOSECONDS.toMicros(nanosElapsed) / 1000.0);
+    }
+
+    private static final Logger log = LoggerFactory.getLogger(KeyValueStorageLevelDB.class);
 }

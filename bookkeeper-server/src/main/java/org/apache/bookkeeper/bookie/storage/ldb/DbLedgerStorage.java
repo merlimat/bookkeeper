@@ -650,6 +650,12 @@ public class DbLedgerStorage implements CompactableLedgerStorage {
         entryLocationIndex.updateLocations(locations);
     }
 
+    @Override
+    public void forceIndexCompaction() throws IOException {
+        ledgerIndex.forceCompaction();
+        entryLocationIndex.forceCompaction();
+    }
+
     private void waitIfFlushInProgress() throws InterruptedException {
         while (isFlushInProgress.get()) {
             Thread.sleep(DEFAULT_SLEEP_TIME_MS_WHEN_FLUSH_IN_PROGRESS);

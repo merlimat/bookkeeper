@@ -86,4 +86,6 @@ public interface KeyValueStorage extends Closeable {
 
         public T next() throws IOException;
     }
+
+    void forceCompaction() throws IOException;
 }

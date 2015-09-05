@@ -24,7 +24,6 @@ package org.apache.bookkeeper.meta;
 import io.netty.buffer.ByteBuf;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
@@ -349,6 +348,10 @@ public class GcLedgersTest extends LedgerManagerTestCase {
 
         @Override
         public void flush() throws IOException {
+        }
+
+        @Override
+        public void forceIndexCompaction() throws IOException {
         }
 
         @Override

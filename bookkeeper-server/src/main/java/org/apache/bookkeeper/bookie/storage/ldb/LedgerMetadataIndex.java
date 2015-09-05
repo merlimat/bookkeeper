@@ -233,5 +233,9 @@ public class LedgerMetadataIndex implements Closeable {
         ledgersDb.delete(deletes);
     }
 
+    void forceCompaction() throws IOException {
+        ledgersDb.forceCompaction();
+    }
+
     private static final Logger log = LoggerFactory.getLogger(LedgerMetadataIndex.class);
 }

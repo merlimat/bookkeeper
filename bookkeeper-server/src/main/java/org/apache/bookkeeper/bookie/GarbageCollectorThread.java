@@ -150,6 +150,13 @@ public class GarbageCollectorThread extends SafeRunnable {
                 this.location = location;
             }
         }
+
+        /**
+         * Force the compaction of ledger storage index, if appropriate for the implementation.
+         *
+         * @throws IOException
+         */
+        void forceIndexCompaction() throws IOException;
     }
 
     /**
@@ -385,6 +392,8 @@ public class GarbageCollectorThread extends SafeRunnable {
                 LOG.info("Enter minor compaction");
                 doCompactEntryLogs(minorCompactionThreshold);
                 lastMinorCompactionTime = MathUtils.now();
+
+                ledgerStorage.forceIndexCompaction();
             }
         } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();
