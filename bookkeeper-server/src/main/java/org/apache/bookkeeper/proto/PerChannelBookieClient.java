@@ -25,7 +25,6 @@ import java.util.Queue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
-import java.util.function.BiConsumer;
 
 import org.apache.bookkeeper.auth.ClientAuthProvider;
 import org.apache.bookkeeper.client.BKException;
@@ -806,6 +805,7 @@ public class PerChannelBookieClient extends ChannelInboundHandlerAdapter {
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
         if (cause instanceof CorruptedFrameException || cause instanceof TooLongFrameException) {
             LOG.error("Corrupted frame received from bookie: {}", ctx.channel().remoteAddress());
+            ctx.close();
             return;
         }
 
@@ -823,18 +823,23 @@ public class PerChannelBookieClient extends ChannelInboundHandlerAdapter {
             // these are thrown when a bookie fails, logging them just pollutes
             // the logs (the failure is logged from the listeners on the write
             // operation), so I'll just ignore it here.
+            ctx.close();
             return;
         }
 
         synchronized (this) {
             if (state == ConnectionState.CLOSED) {
-                LOG.debug("Unexpected exception caught by bookie client channel handler, "
-                          + "but the client is closed, so it isn't important", cause);
+                if (LOG.isDebugEnabled()) {
+                    LOG.debug("Unexpected exception caught by bookie client channel handler, "
+                            + "but the client is closed, so it isn't important", cause);
+                }
             } else {
                 LOG.error("Unexpected exception caught by bookie client channel handler", cause);
             }
         }
+
         // Since we are a library, cant terminate App here, can we?
+        ctx.close();
     }
 
     /**

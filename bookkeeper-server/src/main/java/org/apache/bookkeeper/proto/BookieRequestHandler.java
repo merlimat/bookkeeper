@@ -67,6 +67,7 @@ class BookieRequestHandler extends ChannelInboundHandlerAdapter {
             return;
         }
         LOG.error("Unhandled exception occurred in I/O thread or handler", cause);
+        ctx.close();
     }
 
     @Override
