@@ -211,6 +211,7 @@ class PendingAddOp extends SafeRunnable implements WriteCallback, IntProcedure {
             LOG.warn("Write did not succeed: L{} E{} on {}, rc = {}",
                      new Object[] { ledgerId, entryId, addr, rc });
             lh.handleBookieFailure(addr, bookieIndex);
+            --writeResponsesReceived;
             return;
         }
 
