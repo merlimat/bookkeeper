@@ -336,6 +336,7 @@ public class DbLedgerStorageTest {
 
         ByteBuf res = storage.getEntry(1, 2);
         assertEquals(entry2, res);
+        res.release();
 
         storage.flush();
 
@@ -348,6 +349,7 @@ public class DbLedgerStorageTest {
 
         res = storage.getEntry(1, 2);
         assertEquals(entry2, res);
+        res.release();
 
         ByteBuf entry1 = Unpooled.buffer(1024);
         entry1.writeLong(1); // ledger id
@@ -358,17 +360,21 @@ public class DbLedgerStorageTest {
 
         res = storage.getEntry(1, 1);
         assertEquals(entry1, res);
+        res.release();
         
         res = storage.getEntry(1, 2);
         assertEquals(entry2, res);
+        res.release();
 
         storage.flush();
 
         res = storage.getEntry(1, 1);
         assertEquals(entry1, res);
+        res.release();
         
         res = storage.getEntry(1, 2);
         assertEquals(entry2, res);
+        res.release();
     }
 
 }

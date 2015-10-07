@@ -5,7 +5,6 @@ import io.netty.buffer.Unpooled;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.util.Set;
 
 import org.apache.bookkeeper.bookie.Bookie;
@@ -106,6 +105,7 @@ public class ConversionTest {
 
                 ByteBuf result = dbStorage.getEntry(ledgerId, entryId);
                 Assert.assertEquals(entry, result);
+                result.release();
 
                 try {
                     interleavedStorage.getEntry(ledgerId, entryId);
