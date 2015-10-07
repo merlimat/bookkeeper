@@ -173,7 +173,7 @@ public class KeyValueStorageLevelDB implements KeyValueStorage {
 
     @Override
     public CloseableIterator<byte[]> keys(byte[] firstKey, final byte[] lastKey) {
-        final DBIterator iterator = db.iterator(DontCache);
+        final DBIterator iterator = db.iterator(Cache);
         iterator.seek(firstKey);
 
         return new CloseableIterator<byte[]>() {
