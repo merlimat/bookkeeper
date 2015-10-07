@@ -644,7 +644,7 @@ public class DbLedgerStorage implements CompactableLedgerStorage {
     }
 
     @Override
-    public synchronized void updateEntriesLocations(Iterable<EntryLocation> locations) throws IOException {
+    public void updateEntriesLocations(Iterable<EntryLocation> locations) throws IOException {
         // Trigger a flush to have all the entries being compacted in the db storage
         flush();
 
