@@ -72,7 +72,7 @@ public class EntryLocationIndexTest {
         tmpDir.mkdir();
         tmpDir.deleteOnExit();
 
-        EntryLocationIndex idx = new EntryLocationIndex(tmpDir.getAbsolutePath(), NullStatsLogger.INSTANCE);
+        EntryLocationIndex idx = new EntryLocationIndex(tmpDir.getAbsolutePath(), NullStatsLogger.INSTANCE, 1 * 1024);
 
         Multimap<Long, LongPair> locations = ArrayListMultimap.create();
 

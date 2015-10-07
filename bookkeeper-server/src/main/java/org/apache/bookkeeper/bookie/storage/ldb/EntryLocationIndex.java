@@ -86,15 +86,18 @@ public class EntryLocationIndex implements Closeable {
 
     private StatsLogger stats;
 
-    public EntryLocationIndex(String basePath, StatsLogger stats) throws IOException {
+    public EntryLocationIndex(String basePath, StatsLogger stats, long entryLocationCacheMaxSize) throws IOException {
         String locationsDbPath = FileSystems.getDefault().getPath(basePath, "locations").toFile().toString();
         locationsDb = new KeyValueStorageLevelDB(locationsDbPath);
 
-        locationsCache = new SortedLruCache<LongPair, LedgerIndexPage>((long) 1e6, new Weighter<LedgerIndexPage>() {
-            public long getSize(LedgerIndexPage ledgerIndexPage) {
-                return ledgerIndexPage.getNumberOfEntries();
-            }
-        });
+        // Convert max memory size to max number of entries
+        long maxNumberOfEntries = entryLocationCacheMaxSize / LedgerIndexPage.SIZE_OF_LONG;
+        locationsCache = new SortedLruCache<LongPair, LedgerIndexPage>(maxNumberOfEntries,
+                new Weighter<LedgerIndexPage>() {
+                    public long getSize(LedgerIndexPage ledgerIndexPage) {
+                        return ledgerIndexPage.getNumberOfEntries();
+                    }
+                });
 
         this.stats = stats;
         registerStats();

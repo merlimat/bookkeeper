@@ -24,7 +24,7 @@ public class LedgerIndexPage implements Entry<byte[], byte[]> {
     private final long lastEntry;
     private final ByteBuffer locationsTable;
 
-    private static final int SIZE_OF_LONG = 8;
+    static final int SIZE_OF_LONG = 8;
 
     public LedgerIndexPage(long ledgerId, List<LongPair> entries) {
         checkArgument(entries.size() > 0);
