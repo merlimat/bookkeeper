@@ -575,11 +575,11 @@ public class DbLedgerStorage implements CompactableLedgerStorage {
         writeCacheBeingFlushed.clear();
         isFlushInProgress.set(false);
 
-        long flushTime = MathUtils.elapsedNanos(startTime);
-        double flushThroughput = sizeToFlush / 1024 / 1024 / flushTime / 1e9;
+        double flushTimeSeconds = MathUtils.elapsedNanos(startTime) / (double) TimeUnit.SECONDS.toNanos(1);
+        double flushThroughput = sizeToFlush / 1024 / 1024 / flushTimeSeconds;
         
         if (log.isDebugEnabled()) {
-            log.debug("Flushing done time {} s -- Written {} Mb/s", flushTime / 1e9, flushThroughput);
+            log.debug("Flushing done time {} s -- Written {} Mb/s", flushTimeSeconds, flushThroughput);
         }
 
         recordSuccessfulEvent(flushStats, startTime);
