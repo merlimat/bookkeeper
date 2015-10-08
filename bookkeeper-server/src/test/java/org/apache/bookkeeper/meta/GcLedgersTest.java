@@ -388,6 +388,11 @@ public class GcLedgersTest extends LedgerManagerTestCase {
         }
 
         @Override
+        public void registerLedgerDeletionListener(LedgerDeletionListener listener) {
+        }
+
+
+        @Override
         public void trimEntries(long ledgerId, long lastEntryId) throws IOException {
         }
     }

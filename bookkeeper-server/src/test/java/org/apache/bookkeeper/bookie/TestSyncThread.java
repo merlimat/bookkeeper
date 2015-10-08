@@ -333,6 +333,10 @@ public class TestSyncThread {
 
         @Override
         public BKMBeanInfo getJMXBean() { return null; }
+
+        @Override
+        public void registerLedgerDeletionListener(LedgerDeletionListener listener) {
+        }
     }
 
     private static class DummyLedgerDirsListener

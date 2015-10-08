@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Map.Entry;
 import java.util.SortedMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -85,6 +86,8 @@ public class DbLedgerStorage implements CompactableLedgerStorage {
     private static final int MB = 1024 * 1024;
 
     private static final int DEFAULT_SLEEP_TIME_MS_WHEN_FLUSH_IN_PROGRESS = 10;
+
+    private final CopyOnWriteArrayList<LedgerDeletionListener> ledgerDeletionListeners = Lists.newCopyOnWriteArrayList();
 
     private long writeCacheMaxSize;
 
@@ -577,7 +580,7 @@ public class DbLedgerStorage implements CompactableLedgerStorage {
 
         double flushTimeSeconds = MathUtils.elapsedNanos(startTime) / (double) TimeUnit.SECONDS.toNanos(1);
         double flushThroughput = sizeToFlush / 1024 / 1024 / flushTimeSeconds;
-        
+
         if (log.isDebugEnabled()) {
             log.debug("Flushing done time {} s -- Written {} Mb/s", flushTimeSeconds, flushThroughput);
         }
@@ -636,6 +639,10 @@ public class DbLedgerStorage implements CompactableLedgerStorage {
         readCache.deleteLedger(ledgerId);
         entryLocationIndex.delete(ledgerId);
         ledgerIndex.delete(ledgerId);
+
+        for (LedgerDeletionListener listener : ledgerDeletionListeners) {
+            listener.ledgerDeleted(ledgerId);
+        }
     }
 
     @Override
@@ -724,6 +731,11 @@ public class DbLedgerStorage implements CompactableLedgerStorage {
         }
 
         return numberOfEntries;
+    }
+
+    @Override
+    public void registerLedgerDeletionListener(LedgerDeletionListener listener) {
+        ledgerDeletionListeners.add(listener);
     }
 
     private void recordSuccessfulEvent(OpStatsLogger logger, long startTimeNanos) {

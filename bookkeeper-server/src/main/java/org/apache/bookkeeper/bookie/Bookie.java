@@ -59,6 +59,7 @@ import org.apache.bookkeeper.util.BookKeeperConstants;
 import org.apache.bookkeeper.util.IOUtils;
 import org.apache.bookkeeper.util.MathUtils;
 import org.apache.bookkeeper.util.ZkUtils;
+import org.apache.bookkeeper.util.collections.ConcurrentLongHashMap;
 import org.apache.bookkeeper.versioning.Version;
 import org.apache.bookkeeper.versioning.Versioned;
 import org.apache.bookkeeper.zookeeper.ZooKeeperWatcherBase;
@@ -115,7 +116,7 @@ public class Bookie extends BookieCriticalThread {
     BookieBean jmxBookieBean;
     BKMBeanInfo jmxLedgerStorageBean;
 
-    final Cache<Long, byte[]> masterKeyCache = CacheBuilder.newBuilder().expireAfterWrite(1, TimeUnit.DAYS).build();
+    private final ConcurrentLongHashMap<byte[]> masterKeyCache = new ConcurrentLongHashMap<>();
 
     final protected Registrar registrar;
 
@@ -574,7 +575,7 @@ public class Bookie extends BookieCriticalThread {
                         }
                     } else if (entryId == METAENTRY_ID_FENCE_KEY) {
                         if (journalVersion >= JournalChannel.V4) {
-                            byte[] key = masterKeyCache.getIfPresent(ledgerId);
+                            byte[] key = masterKeyCache.get(ledgerId);
                             if (key == null) {
                                 key = ledgerStorage.readMasterKey(ledgerId);
                             }
@@ -586,7 +587,7 @@ public class Bookie extends BookieCriticalThread {
                                     + ") is too old to hold this");
                         }
                     } else {
-                        byte[] key = masterKeyCache.getIfPresent(ledgerId);
+                        byte[] key = masterKeyCache.get(ledgerId);
                         if (key == null) {
                             key = ledgerStorage.readMasterKey(ledgerId);
                         }
@@ -956,27 +957,20 @@ public class Bookie extends BookieCriticalThread {
         final long ledgerId = entry.getLong(entry.readerIndex());
 
         LedgerDescriptor l = handles.getHandle(ledgerId, masterKey);
-        try {
-            if (masterKeyCache.getIfPresent(ledgerId) == null) {
-                // Force the load into masterKey cache
-                masterKeyCache.get(ledgerId, new Callable<byte[]>() {
-                    @Override
-                    public byte[] call() throws Exception {
-                        // new handle, we should add the key to journal ensure we can rebuild
-                        ByteBuffer bb = ByteBuffer.allocate(8 + 8 + 4 + masterKey.length);
-                        bb.putLong(ledgerId);
-                        bb.putLong(METAENTRY_ID_LEDGER_KEY);
-                        bb.putInt(masterKey.length);
-                        bb.put(masterKey);
-                        bb.flip();
+        if (masterKeyCache.get(ledgerId) == null) {
+            // Force the load into masterKey cache
+            byte[] oldValue = masterKeyCache.putIfAbsent(ledgerId, masterKey);
+            if (oldValue == null) {
+                // new handle, we should add the key to journal ensure we can rebuild
+                ByteBuffer bb = ByteBuffer.allocate(8 + 8 + 4 + masterKey.length);
+                bb.putLong(ledgerId);
+                bb.putLong(METAENTRY_ID_LEDGER_KEY);
+                bb.putInt(masterKey.length);
+                bb.put(masterKey);
+                bb.flip();
 
-                        getJournal(ledgerId).logAddEntry(bb, new NopWriteCallback(), null);
-                        return masterKey;
-                    }
-                });
+                getJournal(ledgerId).logAddEntry(bb, new NopWriteCallback(), null);
             }
-        } catch (ExecutionException e) {
-            throw new IOException(e.getCause());
         }
 
         return l;
