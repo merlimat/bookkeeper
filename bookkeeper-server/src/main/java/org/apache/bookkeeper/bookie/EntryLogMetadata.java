@@ -1,7 +1,8 @@
 package org.apache.bookkeeper.bookie;
 
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+
+import org.apache.bookkeeper.util.collections.ConcurrentLongLongHashMap;
 
 /**
  * Records the total size, remaining size and the set of ledgers that comprise a entry log.
@@ -10,32 +11,26 @@ public class EntryLogMetadata {
     private final long entryLogId;
     private long totalSize;
     private long remainingSize;
-    private ConcurrentHashMap<Long, Long> ledgersMap;
+    private ConcurrentLongLongHashMap ledgersMap;
 
     public EntryLogMetadata(long logId) {
         this.entryLogId = logId;
 
         totalSize = remainingSize = 0;
-        ledgersMap = new ConcurrentHashMap<Long, Long>();
+        ledgersMap = new ConcurrentLongLongHashMap();
     }
 
     public void addLedgerSize(long ledgerId, long size) {
         totalSize += size;
         remainingSize += size;
-        Long ledgerSize = ledgersMap.get(ledgerId);
-        if (null == ledgerSize) {
-            ledgerSize = 0L;
-        }
-        ledgerSize += size;
-        ledgersMap.put(ledgerId, ledgerSize);
+        ledgersMap.addAndGet(ledgerId, size);
     }
 
     public void removeLedger(long ledgerId) {
-        Long size = ledgersMap.remove(ledgerId);
-        if (null == size) {
-            return;
+        long size = ledgersMap.remove(ledgerId);
+        if (size > 0) {
+            remainingSize -= size;
         }
-        remainingSize -= size;
     }
 
     public boolean containsLedger(long ledgerId) {
@@ -66,7 +61,7 @@ public class EntryLogMetadata {
     }
 
     Map<Long, Long> getLedgersMap() {
-        return ledgersMap;
+        return ledgersMap.asMap();
     }
 
     @Override
