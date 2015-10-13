@@ -29,6 +29,7 @@ public class TestBKConfiguration {
         // enable journal format version
         confReturn.setJournalFormatVersionToWrite(5);
         confReturn.setAllowLoopback(true);
+        confReturn.setEntryLogSizeLimit(1 * 1024 * 1024);
         return confReturn;
     }
 

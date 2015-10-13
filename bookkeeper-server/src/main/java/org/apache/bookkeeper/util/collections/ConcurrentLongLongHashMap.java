@@ -230,6 +230,11 @@ public class ConcurrentLongLongHashMap {
         return map;
     }
 
+    @Override
+    public String toString() {
+        return asMap().toString();
+    }
+
     // A section is a portion of the hash map that is covered by a single
     @SuppressWarnings("serial")
     private static final class Section extends StampedLock {

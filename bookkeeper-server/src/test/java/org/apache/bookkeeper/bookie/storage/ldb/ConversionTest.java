@@ -15,6 +15,7 @@ import org.apache.bookkeeper.bookie.InterleavedLedgerStorage;
 import org.apache.bookkeeper.bookie.LedgerDirsManager;
 import org.apache.bookkeeper.conf.ServerConfiguration;
 import org.apache.bookkeeper.stats.NullStatsLogger;
+import org.apache.commons.io.FileUtils;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -118,5 +119,6 @@ public class ConversionTest {
 
         interleavedStorage.shutdown();
         dbStorage.shutdown();
+        FileUtils.deleteDirectory(tmpDir);
     }
 }

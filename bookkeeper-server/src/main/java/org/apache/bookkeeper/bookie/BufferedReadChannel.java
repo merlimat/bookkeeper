@@ -24,6 +24,8 @@ package org.apache.bookkeeper.bookie;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.netty.buffer.ByteBuf;
+
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
@@ -59,7 +61,7 @@ public class BufferedReadChannel extends BufferedChannelBase {
      * @return The total number of bytes read. -1 if the given position is greater than or equal to the file's current size.
      * @throws IOException if I/O error occurs
      */
-    synchronized public int read(ByteBuffer dest, long pos) throws IOException {
+    synchronized public int read(ByteBuf dest, long pos) throws IOException {
         invocationCount++;
         long currentPosition = pos;
         long eof = validateAndGetFileChannel().size();
@@ -67,15 +69,17 @@ public class BufferedReadChannel extends BufferedChannelBase {
         if (pos >= eof) {
             return -1;
         }
-        while (dest.remaining() > 0) {
+        while (dest.isWritable()) {
             // Check if the data is in the buffer, if so, copy it.
             if (readBufferStartPosition <= currentPosition && currentPosition < readBufferStartPosition + readBuffer.limit()) {
                 long posInBuffer = currentPosition - readBufferStartPosition;
-                long bytesToCopy = Math.min(dest.remaining(), readBuffer.limit() - posInBuffer);
-                ByteBuffer rbDup = readBuffer.duplicate();
-                rbDup.position((int)posInBuffer);
-                rbDup.limit((int)(posInBuffer + bytesToCopy));
-                dest.put(rbDup);
+                int bytesToCopy = Math.min(dest.writableBytes(), (int) (readBuffer.limit() - posInBuffer));
+
+                int oldLimit = readBuffer.limit();
+                readBuffer.position((int) posInBuffer);
+                readBuffer.limit((int) (posInBuffer + bytesToCopy));
+                dest.writeBytes(readBuffer);
+                readBuffer.limit(oldLimit);
                 currentPosition += bytesToCopy;
                 cacheHitCount++;
             } else if (currentPosition >= eof) {
@@ -90,6 +94,7 @@ public class BufferedReadChannel extends BufferedChannelBase {
                     throw new IOException("Reading from filechannel returned a non-positive value. Short read.");
                 }
                 readBuffer.limit(readBytes);
+                readBuffer.flip();
             }
         }
         return (int)(currentPosition - pos);

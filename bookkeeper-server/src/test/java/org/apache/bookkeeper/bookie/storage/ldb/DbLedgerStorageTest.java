@@ -18,6 +18,7 @@ import org.apache.bookkeeper.bookie.EntryLogger;
 import org.apache.bookkeeper.bookie.GarbageCollectorThread.CompactableLedgerStorage.EntryLocation;
 import org.apache.bookkeeper.conf.ServerConfiguration;
 import org.apache.bookkeeper.proto.BookieProtocol;
+import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -50,7 +51,7 @@ public class DbLedgerStorageTest {
 
     @After
     public void teardown() throws Exception {
-        tmpDir.delete();
+        FileUtils.deleteDirectory(tmpDir);
     }
 
     @Test

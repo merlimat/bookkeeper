@@ -26,8 +26,9 @@ package org.apache.bookkeeper.bookie;
 import com.google.common.util.concurrent.RateLimiter;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 
+import io.netty.buffer.ByteBuf;
+
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -41,7 +42,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import com.google.common.annotations.VisibleForTesting;
-import com.google.common.util.concurrent.RateLimiter;
 
 import org.apache.bookkeeper.bookie.EntryLogger.EntryLogScanner;
 import org.apache.bookkeeper.bookie.GarbageCollector.GarbageCleaner;
@@ -174,16 +174,16 @@ public class GarbageCollectorThread extends SafeRunnable {
                 }
 
                 @Override
-                public void process(final long ledgerId, long offset, ByteBuffer entry)
-                        throws IOException {
+                public void process(final long ledgerId, long offset, ByteBuf entry) throws IOException {
                     rateLimiter.acquire();
                     synchronized (CompactionScannerFactory.this) {
                         if (offsets.size() > maxOutstandingRequests) {
                             waitEntrylogFlushed();
                         }
-                        entry.getLong(); // discard ledger id, we already have it
-                        long entryId = entry.getLong();
-                        entry.rewind();
+
+                        // Discard ledger id, we already have it and read entryId at offset 8 without moving the
+                        // buffer's readerIdx
+                        long entryId = entry.getLong(8);
 
                         long newoffset = entryLogger.addEntry(ledgerId, entry);
                         offsets.add(new EntryLocation(ledgerId, entryId, newoffset));

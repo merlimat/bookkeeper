@@ -44,9 +44,11 @@ import org.apache.bookkeeper.proto.BookkeeperInternalCallbacks.GenericCallback;
 import org.apache.bookkeeper.proto.BookkeeperInternalCallbacks.LedgerMetadataListener;
 import org.apache.bookkeeper.proto.BookkeeperInternalCallbacks.Processor;
 import org.apache.bookkeeper.test.BookKeeperClusterTestCase;
+import org.apache.bookkeeper.util.IOUtils;
 import org.apache.bookkeeper.util.MathUtils;
 import org.apache.bookkeeper.util.TestUtils;
 import org.apache.bookkeeper.versioning.Version;
+import org.apache.commons.io.FileUtils;
 import org.apache.zookeeper.AsyncCallback;
 import org.junit.Before;
 import org.junit.Test;
@@ -94,11 +96,15 @@ public class CompactionTest extends BookKeeperClusterTestCase {
         msg = msgSB.toString();
     }
 
+    @Override
+    protected long getEntryLogSizeLimit() {
+        return numEntries * ENTRY_SIZE;
+    }
+
     @Before
     @Override
     public void setUp() throws Exception {
         // Set up the configuration properties needed.
-        baseConf.setEntryLogSizeLimit(numEntries * ENTRY_SIZE);
         // Disable skip list for compaction
         baseConf.setGcWaitTime(gcWaitTime);
         baseConf.setMinorCompactionThreshold(minorCompactionThreshold);
@@ -375,6 +381,7 @@ public class CompactionTest extends BookKeeperClusterTestCase {
             = new MockLedgerManagerProvider(ledgers);
 
         File tmpDir = createTempDir("bkTest", ".dir");
+        tmpDirs.add(tmpDir);
         File curDir = Bookie.getCurrentDirectory(tmpDir);
         Bookie.checkDirectoryStructure(curDir);
         conf.setLedgerDirNames(new String[] {tmpDir.toString()});
@@ -539,6 +546,7 @@ public class CompactionTest extends BookKeeperClusterTestCase {
         tearDown(); // I dont want the test infrastructure
         ServerConfiguration conf = TestBKConfiguration.newServerConfiguration();
         File tmpDir = createTempDir("bkTest", ".dir");
+        tmpDirs.add(tmpDir);
         File curDir = Bookie.getCurrentDirectory(tmpDir);
         Bookie.checkDirectoryStructure(curDir);
         conf.setLedgerDirNames(new String[] { tmpDir.toString() });

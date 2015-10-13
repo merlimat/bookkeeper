@@ -209,7 +209,12 @@ public abstract class BookKeeperClusterTestCase {
             ledgerDirNames[i] = ledgerDirs[i].getPath();
         }
         conf.setLedgerDirNames(ledgerDirNames);
+        conf.setEntryLogSizeLimit(getEntryLogSizeLimit());
         return conf;
+    }
+
+    protected long getEntryLogSizeLimit() {
+        return 1 * 1024 * 1024;
     }
 
     /**

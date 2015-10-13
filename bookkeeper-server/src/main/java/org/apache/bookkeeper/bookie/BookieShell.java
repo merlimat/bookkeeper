@@ -73,6 +73,10 @@ import org.apache.bookkeeper.zookeeper.ZooKeeperClient;
 import org.apache.bookkeeper.proto.BookkeeperInternalCallbacks.GenericCallback;
 
 import com.google.common.util.concurrent.AbstractFuture;
+
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
+
 import static com.google.common.base.Charsets.UTF_8;
 
 import org.apache.commons.configuration.Configuration;
@@ -1836,8 +1840,8 @@ public class BookieShell implements Tool {
                 return true;
             }
             @Override
-            public void process(long ledgerId, long startPos, ByteBuffer entry) {
-                formatEntry(startPos, entry, printMsg);
+            public void process(long ledgerId, long startPos, ByteBuf entry) {
+                formatEntry(startPos, entry.nioBuffer(), printMsg);
             }
         });
     }

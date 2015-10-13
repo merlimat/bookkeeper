@@ -556,7 +556,7 @@ public class DbLedgerStorage implements CompactableLedgerStorage {
             long ledgerId = ledgerAndEntry.first;
             long entryId = ledgerAndEntry.second;
 
-            long location = entryLogger.addEntry(ledgerId, content.nioBuffer(), true);
+            long location = entryLogger.addEntry(ledgerId, content, true);
             locationMap.put(ledgerId, new LongPair(entryId, location));
 
             // While we have space in the read cache, we transfer entries from the write cache

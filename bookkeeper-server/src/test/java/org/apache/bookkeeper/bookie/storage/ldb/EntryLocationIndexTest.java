@@ -10,6 +10,7 @@ import java.util.List;
 import org.apache.bookkeeper.bookie.Bookie.NoEntryException;
 import org.apache.bookkeeper.bookie.storage.ldb.EntryLocationIndex.EntryRange;
 import org.apache.bookkeeper.stats.NullStatsLogger;
+import org.apache.commons.io.FileUtils;
 import org.junit.Test;
 
 import com.google.common.collect.ArrayListMultimap;
@@ -120,5 +121,6 @@ public class EntryLocationIndexTest {
         }
 
         idx.close();
+        FileUtils.deleteDirectory(tmpDir);
     }
 }
