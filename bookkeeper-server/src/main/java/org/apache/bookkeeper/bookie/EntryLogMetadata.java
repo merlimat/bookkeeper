@@ -60,8 +60,8 @@ public class EntryLogMetadata {
         return remainingSize;
     }
 
-    Map<Long, Long> getLedgersMap() {
-        return ledgersMap.asMap();
+    ConcurrentLongLongHashMap getLedgersMap() {
+        return ledgersMap;
     }
 
     @Override

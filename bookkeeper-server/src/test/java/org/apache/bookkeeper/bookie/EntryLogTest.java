@@ -90,7 +90,7 @@ public class EntryLogTest {
         EntryLogMetadata meta = logger.getEntryLogMetadata(0L);
         LOG.info("Extracted Meta From Entry Log {}", meta);
         assertNotNull(meta.getLedgersMap().get(1L));
-        assertNull(meta.getLedgersMap().get(2L));
+        assertFalse(meta.getLedgersMap().containsKey(2L));
         assertNotNull(meta.getLedgersMap().get(3L));
     }
 
@@ -242,10 +242,10 @@ public class EntryLogTest {
 
         EntryLogMetadata meta = logger.extractEntryLogMetadataFromIndex(0L);
         LOG.info("Extracted Meta From Entry Log {}", meta);
-        assertEquals(60, meta.getLedgersMap().get(1L).longValue());
-        assertEquals(30, meta.getLedgersMap().get(2L).longValue());
-        assertEquals(30, meta.getLedgersMap().get(3L).longValue());
-        assertNull(meta.getLedgersMap().get(4L));
+        assertEquals(60, meta.getLedgersMap().get(1L));
+        assertEquals(30, meta.getLedgersMap().get(2L));
+        assertEquals(30, meta.getLedgersMap().get(3L));
+        assertFalse(meta.getLedgersMap().containsKey(4L));
         assertEquals(120, meta.getTotalSize());
         assertEquals(120, meta.getRemainingSize());
     }
@@ -294,10 +294,10 @@ public class EntryLogTest {
         // Public method should succeed by falling back to scanning the file
         EntryLogMetadata meta = logger.getEntryLogMetadata(0L);
         LOG.info("Extracted Meta From Entry Log {}", meta);
-        assertEquals(60, meta.getLedgersMap().get(1L).longValue());
-        assertEquals(30, meta.getLedgersMap().get(2L).longValue());
-        assertEquals(30, meta.getLedgersMap().get(3L).longValue());
-        assertNull(meta.getLedgersMap().get(4L));
+        assertEquals(60, meta.getLedgersMap().get(1L));
+        assertEquals(30, meta.getLedgersMap().get(2L));
+        assertEquals(30, meta.getLedgersMap().get(3L));
+        assertFalse(meta.getLedgersMap().containsKey(4L));
         assertEquals(120, meta.getTotalSize());
         assertEquals(120, meta.getRemainingSize());
     }

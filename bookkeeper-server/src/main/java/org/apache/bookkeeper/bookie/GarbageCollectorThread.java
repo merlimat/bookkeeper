@@ -23,11 +23,6 @@ package org.apache.bookkeeper.bookie;
 
 
 
-import com.google.common.util.concurrent.RateLimiter;
-import com.google.common.util.concurrent.ThreadFactoryBuilder;
-
-import io.netty.buffer.ByteBuf;
-
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -41,8 +36,6 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import com.google.common.annotations.VisibleForTesting;
-
 import org.apache.bookkeeper.bookie.EntryLogger.EntryLogScanner;
 import org.apache.bookkeeper.bookie.GarbageCollector.GarbageCleaner;
 import org.apache.bookkeeper.bookie.GarbageCollectorThread.CompactableLedgerStorage.EntryLocation;
@@ -51,12 +44,19 @@ import org.apache.bookkeeper.meta.LedgerManager;
 import org.apache.bookkeeper.meta.LedgerManagerFactory;
 import org.apache.bookkeeper.util.MathUtils;
 import org.apache.bookkeeper.util.SafeRunnable;
-import org.apache.zookeeper.ZooKeeper;
-import org.apache.zookeeper.KeeperException;
 import org.apache.bookkeeper.util.ZkUtils;
+import org.apache.bookkeeper.util.collections.ConcurrentLongLongHashMap.BiConsumerLong;
 import org.apache.bookkeeper.zookeeper.ZooKeeperWatcherBase;
+import org.apache.zookeeper.KeeperException;
+import org.apache.zookeeper.ZooKeeper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.google.common.annotations.VisibleForTesting;
+import com.google.common.util.concurrent.RateLimiter;
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
+
+import io.netty.buffer.ByteBuf;
 
 /**
  * This is the garbage collector thread that runs in the background to
@@ -420,16 +420,20 @@ public class GarbageCollectorThread extends SafeRunnable {
         // Loop through all of the entry logs and remove the non-active ledgers.
         for (Long entryLogId : entryLogMetaMap.keySet()) {
             EntryLogMetadata meta = entryLogMetaMap.get(entryLogId);
-            for (Long entryLogLedger : meta.getLedgersMap().keySet()) {
-                // Remove the entry log ledger from the set if it isn't active.
-                try {
-                    if (!ledgerStorage.ledgerExists(entryLogLedger)) {
-                        meta.removeLedger(entryLogLedger);
+            meta.getLedgersMap().forEach(new BiConsumerLong() {
+                @Override
+                public void accept(long entryLogLedger, long size) {
+                    // Remove the entry log ledger from the set if it isn't active.
+                    try {
+                        if (!ledgerStorage.ledgerExists(entryLogLedger)) {
+                            meta.removeLedger(entryLogLedger);
+                        }
+                    } catch (IOException e) {
+                        LOG.error("Error reading from ledger storage", e);
                     }
-                } catch (IOException e) {
-                    LOG.error("Error reading from ledger storage", e);
                 }
-            }
+            });
+
             if (meta.isEmpty()) {
                 // This means the entry log is not associated with any active ledgers anymore.
                 // We can remove this entry log file now.
