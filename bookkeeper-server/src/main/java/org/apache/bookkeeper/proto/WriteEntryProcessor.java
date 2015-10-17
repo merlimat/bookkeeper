@@ -17,9 +17,6 @@
  */
 package org.apache.bookkeeper.proto;
 
-import io.netty.buffer.ByteBuf;
-import io.netty.channel.Channel;
-
 import java.io.IOException;
 import java.util.concurrent.TimeUnit;
 
@@ -31,6 +28,11 @@ import org.apache.bookkeeper.util.MathUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.netty.buffer.ByteBuf;
+import io.netty.channel.Channel;
+import io.netty.util.Recycler;
+import io.netty.util.Recycler.Handle;
+
 /**
  * Processes add entry requests
  */
@@ -40,9 +42,11 @@ class WriteEntryProcessor extends PacketProcessorBase implements WriteCallback {
 
     long startTimeNanos;
 
-    public WriteEntryProcessor(Request request, Channel channel,
-                               BookieRequestProcessor requestProcessor) {
-        super(request, channel, requestProcessor);
+    public static WriteEntryProcessor create(Request request, Channel channel,
+            BookieRequestProcessor requestProcessor) {
+        WriteEntryProcessor wep = RECYCLER.get();
+        wep.init(request, channel, requestProcessor);
+        return wep;
     }
 
     @Override
@@ -106,5 +110,24 @@ class WriteEntryProcessor extends PacketProcessorBase implements WriteCallback {
                      requestProcessor.addRequestStats);
         
         ((BookieProtocol.AddRequest) request).recycle();
+        recycle();
     }
+
+    private void recycle() {
+        super.reset();
+        RECYCLER.recycle(this, recyclerHandle);
+    }
+
+    private final Handle recyclerHandle;
+
+    private WriteEntryProcessor(Handle recyclerHandle) {
+        this.recyclerHandle = recyclerHandle;
+    }
+
+    private static final Recycler<WriteEntryProcessor> RECYCLER = new Recycler<WriteEntryProcessor>() {
+        @Override
+        protected WriteEntryProcessor newObject(Handle handle) {
+            return new WriteEntryProcessor(handle);
+        }
+    };
 }
