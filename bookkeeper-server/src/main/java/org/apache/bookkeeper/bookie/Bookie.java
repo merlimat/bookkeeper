@@ -560,7 +560,9 @@ public class Bookie extends BookieCriticalThread {
                 long ledgerId = recBuff.getLong();
                 long entryId = recBuff.getLong();
                 try {
-                    LOG.debug("Replay journal - ledger id : {}, entry id : {}.", ledgerId, entryId);
+                    if (LOG.isDebugEnabled()) {
+                        LOG.debug("Replay journal - ledger id : {}, entry id : {}.", ledgerId, entryId);
+                    }
                     if (entryId == METAENTRY_ID_LEDGER_KEY) {
                         if (journalVersion >= JournalChannel.V3) {
                             int masterKeyLen = recBuff.getInt();

@@ -26,13 +26,20 @@ import java.io.File;
 import java.io.RandomAccessFile;
 import java.io.IOException;
 import java.nio.channels.FileChannel;
+import java.nio.channels.FileChannel.MapMode;
 import java.nio.ByteBuffer;
+import java.nio.MappedByteBuffer;
 import java.util.Arrays;
 
+import org.apache.bookkeeper.proto.BookieProtocol;
+import org.apache.bookkeeper.proto.PerChannelBookieClient;
 import org.apache.bookkeeper.util.NativeIO;
 import org.apache.bookkeeper.util.ZeroBuffer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 
 import static com.google.common.base.Charsets.UTF_8;
 
@@ -46,10 +53,13 @@ class JournalChannel implements Closeable {
     final RandomAccessFile randomAccessFile;
     final int fd;
     final FileChannel fc;
+    private final MappedByteBuffer mappedFile;
+    private final ByteBuf wrappedData;
+    
     final int formatVersion;
     long nextPrealloc = 0;
 
-    final byte[] MAGIC_WORD = "BKLG".getBytes(UTF_8);
+    final static byte[] MAGIC_WORD = "BKLG".getBytes(UTF_8);
 
     final static int SECTOR_SIZE = 512;
     private final static int START_OF_FILE = -12345;
@@ -93,15 +103,15 @@ class JournalChannel implements Closeable {
     // Open journal for scanning starting from given position.
     JournalChannel(File journalDirectory, long logId,
                    long preAllocSize, int writeBufferSize, long position) throws IOException {
-         this(journalDirectory, logId, preAllocSize, writeBufferSize, SECTOR_SIZE, position, false, V5);
+        this(journalDirectory, logId, preAllocSize, writeBufferSize, SECTOR_SIZE, position, false, V5, 1 * 1024 * 1024);
     }
 
     // Open journal to write
     JournalChannel(File journalDirectory, long logId,
                    long preAllocSize, int writeBufferSize, int journalAlignSize,
-                   boolean fRemoveFromPageCache, int formatVersionToWrite) throws IOException {
+                   boolean fRemoveFromPageCache, int formatVersionToWrite, long maxFileSize) throws IOException {
         this(journalDirectory, logId, preAllocSize, writeBufferSize, journalAlignSize,
-             START_OF_FILE, fRemoveFromPageCache, formatVersionToWrite);
+             START_OF_FILE, fRemoveFromPageCache, formatVersionToWrite, maxFileSize);
     }
 
     /**
@@ -128,7 +138,7 @@ class JournalChannel implements Closeable {
     private JournalChannel(File journalDirectory, long logId,
                            long preAllocSize, int writeBufferSize, int journalAlignSize,
                            long position, boolean fRemoveFromPageCache,
-                           int formatVersionToWrite) throws IOException {
+                           int formatVersionToWrite, long maxFileSize) throws IOException {
         this.journalAlignSize = journalAlignSize;
         this.zeros = ByteBuffer.allocate(journalAlignSize);
         this.preAllocSize = preAllocSize - preAllocSize % journalAlignSize;
@@ -163,7 +173,21 @@ class JournalChannel implements Closeable {
             forceWrite(true);
             nextPrealloc = this.preAllocSize;
             fc.write(zeros, nextPrealloc - journalAlignSize);
+
+            // Mapped file can only be up to 2Gb
+            int maxMessageSize = PerChannelBookieClient.MAX_FRAME_LENGTH;
+            maxFileSize = Math.min(maxFileSize, Integer.MAX_VALUE - maxMessageSize);
+            // Since we cut the journal after having written an entry that goes over the max size,
+            // we need to prepare extra mapped space in addition to max size.
+            int mappedRegionSize = (int) (maxFileSize + maxMessageSize);
+
+            this.mappedFile = fc.map(MapMode.READ_WRITE, 0, mappedRegionSize);
+            this.wrappedData = Unpooled.wrappedBuffer(mappedFile);
+            this.wrappedData.writerIndex(headerSize);
         } else {  // open an existing file
+            this.mappedFile = null;
+            this.wrappedData = null;
+            
             randomAccessFile = new RandomAccessFile(fn, "r");
             fc = randomAccessFile.getChannel();
 
@@ -219,16 +243,8 @@ class JournalChannel implements Closeable {
         return formatVersion;
     }
 
-    FileChannel getChannel() throws IOException {
-        return fc;
-    }
-
-    void preAllocIfNeeded(long size) throws IOException {
-        if (fc.position() + size > nextPrealloc) {
-            nextPrealloc += preAllocSize;
-            zeros.clear();
-            fc.write(zeros, nextPrealloc - journalAlignSize);
-        }
+    ByteBuf getWriteBuffer() throws IOException {
+        return wrappedData;
     }
 
     int read(ByteBuffer dst)

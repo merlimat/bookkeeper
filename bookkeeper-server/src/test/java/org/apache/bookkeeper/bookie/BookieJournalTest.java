@@ -193,7 +193,8 @@ public class BookieJournalTest {
 
         moveToPosition(jc, JournalChannel.VERSION_HEADER_SIZE);
 
-        FileChannel bc = jc.getChannel();
+        ByteBuf writeBuffer = jc.getWriteBuffer();
+        writeBuffer.writerIndex(JournalChannel.VERSION_HEADER_SIZE);
 
         byte[] data = new byte[1024];
         Arrays.fill(data, (byte)'X');
@@ -201,12 +202,8 @@ public class BookieJournalTest {
         for (int i = 1; i <= numEntries; i++) {
             ByteBuf packet = ClientUtil.generatePacket(1, i, lastConfirmed, i*data.length, data);
             lastConfirmed = i;
-            ByteBuffer lenBuff = ByteBuffer.allocate(4);
-            lenBuff.putInt(packet.readableBytes());
-            lenBuff.flip();
-
-            bc.write(lenBuff);
-            bc.write(packet.nioBuffer());
+            writeBuffer.writeInt(packet.readableBytes());
+            writeBuffer.writeBytes(packet);
             packet.release();
         }
 
@@ -221,7 +218,8 @@ public class BookieJournalTest {
 
         moveToPosition(jc, JournalChannel.VERSION_HEADER_SIZE);
 
-        FileChannel bc = jc.getChannel();
+        ByteBuf writeBuffer = jc.getWriteBuffer();
+        writeBuffer.writerIndex(JournalChannel.VERSION_HEADER_SIZE);
 
         byte[] data = new byte[1024];
         Arrays.fill(data, (byte)'X');
@@ -234,12 +232,8 @@ public class BookieJournalTest {
                 packet = ClientUtil.generatePacket(1, i, lastConfirmed, i*data.length, data);
             }
             lastConfirmed = i;
-            ByteBuffer lenBuff = ByteBuffer.allocate(4);
-            lenBuff.putInt(packet.readableBytes());
-            lenBuff.flip();
-
-            bc.write(lenBuff);
-            bc.write(packet.nioBuffer());
+            writeBuffer.writeInt(packet.readableBytes());
+            writeBuffer.writeBytes(packet);
             packet.release();
         }
 
@@ -254,7 +248,8 @@ public class BookieJournalTest {
 
         moveToPosition(jc, JournalChannel.VERSION_HEADER_SIZE);
 
-        FileChannel bc = jc.getChannel();
+        ByteBuf writeBuffer = jc.getWriteBuffer();
+        writeBuffer.writerIndex(JournalChannel.VERSION_HEADER_SIZE);
 
         byte[] data = new byte[1024];
         Arrays.fill(data, (byte)'X');
@@ -267,20 +262,15 @@ public class BookieJournalTest {
                 packet = ClientUtil.generatePacket(1, i, lastConfirmed, i * data.length, data);
             }
             lastConfirmed = i;
-            ByteBuffer lenBuff = ByteBuffer.allocate(4);
-            lenBuff.putInt(packet.readableBytes());
-            lenBuff.flip();
-            bc.write(lenBuff);
-            bc.write(packet.nioBuffer());
+            writeBuffer.writeInt(packet.readableBytes());
+            writeBuffer.writeBytes(packet);
             packet.release();
         }
         // write fence key
         ByteBuffer packet = generateFenceEntry(1);
-        ByteBuffer lenBuf = ByteBuffer.allocate(4);
-        lenBuf.putInt(packet.remaining());
-        lenBuf.flip();
-        bc.write(lenBuf);
-        bc.write(packet);
+        writeBuffer.writeInt(packet.remaining());
+        writeBuffer.writeBytes(packet);
+        jc.forceWrite(false);
         updateJournalVersion(jc, JournalChannel.V4);
         return jc;
     }
@@ -289,10 +279,10 @@ public class BookieJournalTest {
         long logId = System.currentTimeMillis();
         JournalChannel jc = new JournalChannel(journalDir, logId);
 
-        FileChannel bc = jc.getChannel();
+        ByteBuf writeBuffer = jc.getWriteBuffer();
 
-        ByteBuffer paddingBuff = ByteBuffer.allocateDirect(2 * JournalChannel.SECTOR_SIZE);
-        ZeroBuffer.put(paddingBuff);
+        ByteBuf paddingBuff = Unpooled.buffer(2 * JournalChannel.SECTOR_SIZE);
+        paddingBuff.writeZero(paddingBuff.capacity());
         byte[] data = new byte[4 * 1024 * 1024];
         Arrays.fill(data, (byte)'X');
         long lastConfirmed = LedgerHandle.INVALID_ENTRY_ID;
@@ -306,22 +296,16 @@ public class BookieJournalTest {
             }
             lastConfirmed = i;
             length += i;
-            ByteBuffer lenBuff = ByteBuffer.allocate(4);
-            lenBuff.putInt(packet.readableBytes());
-            lenBuff.flip();
-            bc.write(lenBuff);
-            bc.write(packet.nioBuffer());
+            writeBuffer.writeInt(packet.readableBytes());
+            writeBuffer.writeBytes(packet);
             packet.release();
-            Journal.writePaddingBytes(jc, paddingBuff, JournalChannel.SECTOR_SIZE);
+            Journal.writePaddingBytes(writeBuffer, paddingBuff, JournalChannel.SECTOR_SIZE);
         }
         // write fence key
         ByteBuffer packet = generateFenceEntry(1);
-        ByteBuffer lenBuf = ByteBuffer.allocate(4);
-        lenBuf.putInt(packet.remaining());
-        lenBuf.flip();
-        bc.write(lenBuf);
-        bc.write(packet);
-        Journal.writePaddingBytes(jc, paddingBuff, JournalChannel.SECTOR_SIZE);
+        writeBuffer.writeInt(packet.remaining());
+        writeBuffer.writeBytes(packet);
+        Journal.writePaddingBytes(writeBuffer, paddingBuff, JournalChannel.SECTOR_SIZE);
         updateJournalVersion(jc, JournalChannel.V5);
         return jc;
     }
@@ -516,7 +500,7 @@ public class BookieJournalTest {
         Bookie.checkDirectoryStructure(Bookie.getCurrentDirectory(ledgerDir));
 
         JournalChannel jc = writeV2Journal(Bookie.getCurrentDirectory(journalDir), 0);
-        jc.getChannel().write(ByteBuffer.wrap("JunkJunkJunk".getBytes()));
+        jc.getWriteBuffer().writeBytes("JunkJunkJunk".getBytes());
 
         writeIndexFileForLedger(ledgerDir, 1, "testPasswd".getBytes());
 
@@ -553,7 +537,7 @@ public class BookieJournalTest {
                 Bookie.getCurrentDirectory(journalDir), 100);
         ByteBuffer zeros = ByteBuffer.allocate(2048);
 
-        jc.fc.position(jc.getChannel().position() - 0x429);
+        jc.fc.position(jc.getWriteBuffer().writerIndex() - 0x429);
         jc.fc.write(zeros);
         jc.fc.force(false);
 
@@ -597,7 +581,7 @@ public class BookieJournalTest {
                 Bookie.getCurrentDirectory(journalDir), 100);
         ByteBuffer zeros = ByteBuffer.allocate(2048);
 
-        jc.fc.position(jc.getChannel().position() - 0x300);
+        jc.fc.position(jc.getWriteBuffer().writerIndex() - 0x300);
         jc.fc.write(zeros);
         jc.fc.force(false);
 

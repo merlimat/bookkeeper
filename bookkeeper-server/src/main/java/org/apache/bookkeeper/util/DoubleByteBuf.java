@@ -61,6 +61,7 @@ public class DoubleByteBuf extends AbstractReferenceCountedByteBuf {
         // outside of DoubleByteBuf scope
         buf.b1 = b1.retain();
         buf.b2 = b2.retain();
+        buf.setIndex(0, b1.readableBytes() + b2.readableBytes());
         return buf;
     }
 

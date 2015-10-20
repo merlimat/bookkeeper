@@ -210,6 +210,7 @@ public abstract class BookKeeperClusterTestCase {
         }
         conf.setLedgerDirNames(ledgerDirNames);
         conf.setEntryLogSizeLimit(getEntryLogSizeLimit());
+        conf.setMaxJournalSizeMB(1);
         return conf;
     }
 
