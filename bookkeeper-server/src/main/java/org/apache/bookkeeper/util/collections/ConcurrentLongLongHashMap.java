@@ -524,8 +524,8 @@ public class ConcurrentLongLongHashMap {
                 }
             }
 
-            capacity = newCapacity;
             table = newTable;
+            capacity = newCapacity;
             usedBuckets = size;
             resizeThreshold = (int) (capacity * MapFillFactor);
         }

@@ -371,8 +371,8 @@ public class ConcurrentOpenHashSet<V> {
                 }
             }
 
-            capacity = newCapacity;
             values = newValues;
+            capacity = newCapacity;
             usedBuckets = size;
             resizeThreshold = (int) (capacity * MapFillFactor);
         }

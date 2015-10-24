@@ -447,9 +447,9 @@ public class ConcurrentLongHashMap<V> {
                 }
             }
 
-            capacity = newCapacity;
             keys = newKeys;
             values = newValues;
+            capacity = newCapacity;
             usedBuckets = size;
             resizeThreshold = (int) (capacity * MapFillFactor);
         }
