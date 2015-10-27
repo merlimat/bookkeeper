@@ -32,13 +32,9 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import com.google.common.base.Stopwatch;
@@ -50,11 +46,11 @@ import org.apache.bookkeeper.stats.Counter;
 import org.apache.bookkeeper.stats.NullStatsLogger;
 import org.apache.bookkeeper.stats.OpStatsLogger;
 import org.apache.bookkeeper.stats.StatsLogger;
-import org.apache.bookkeeper.util.DaemonThreadFactory;
+import org.apache.bookkeeper.util.BlockingMessagePassingQueue;
 import org.apache.bookkeeper.util.IOUtils;
 import org.apache.bookkeeper.util.MathUtils;
-import org.apache.bookkeeper.util.UnboundArrayBlockingQueue;
-import org.apache.bookkeeper.util.ZeroBuffer;
+import org.apache.bookkeeper.util.OrderedSafeExecutor;
+import org.apache.bookkeeper.util.SafeRunnable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -278,7 +274,7 @@ class Journal extends BookieCriticalThread implements CheckpointSource {
     /**
      * Journal Entry to Record
      */
-    private static class QueueEntry implements Runnable {
+    private static class QueueEntry extends SafeRunnable {
         ByteBuf entry;
         long ledgerId;
         long entryId;
@@ -309,7 +305,7 @@ class Journal extends BookieCriticalThread implements CheckpointSource {
         }
 
         @Override
-        public void run() {
+        public void safeRun() {
             callback();
             recycle();
         }
@@ -565,11 +561,11 @@ class Journal extends BookieCriticalThread implements CheckpointSource {
     /**
      * The thread pool used to handle callback.
      */
-    private final ExecutorService cbThreadPool;
+    private final OrderedSafeExecutor cbThreadPool;
 
     // journal entry queue to commit
-    final BlockingQueue<QueueEntry> queue = new UnboundArrayBlockingQueue<QueueEntry>();
-    final BlockingQueue<ForceWriteRequest> forceWriteRequests = new UnboundArrayBlockingQueue<ForceWriteRequest>();
+    final BlockingMessagePassingQueue<QueueEntry> queue = BlockingMessagePassingQueue.newMpscWithFixedSize(1000);
+    final BlockingMessagePassingQueue<ForceWriteRequest> forceWriteRequests = BlockingMessagePassingQueue.newMpscWithFixedSize(1000);
 
     volatile boolean running = true;
     private final LedgerDirsManager ledgerDirsManager;
@@ -607,8 +603,7 @@ class Journal extends BookieCriticalThread implements CheckpointSource {
         this.maxGroupWaitInNanos = TimeUnit.MILLISECONDS.toNanos(conf.getJournalMaxGroupWaitMSec());
         this.bufferedWritesThreshold = conf.getJournalBufferedWritesThreshold();
         this.bufferedEntriesThreshold = conf.getJournalBufferedEntriesThreshold();
-        this.cbThreadPool = Executors.newFixedThreadPool(conf.getNumJournalCallbackThreads(),
-                                                         new DaemonThreadFactory());
+        this.cbThreadPool = new OrderedSafeExecutor(conf.getNumJournalCallbackThreads(), "bk-journal-callback");
 
         // Unless there is a cap on the max wait (which requires group force writes)
         // we cannot skip flushing for queue empty
@@ -812,7 +807,13 @@ class Journal extends BookieCriticalThread implements CheckpointSource {
         long entryId = entry.readLong();
         entry.resetReaderIndex();
         journalQueueSize.inc();
-        queue.add(QueueEntry.create(entry, ledgerId, entryId, cb, ctx, MathUtils.nowInNano(), journalAddEntryStats));
+
+        try {
+            queue.put(QueueEntry.create(entry, ledgerId, entryId, cb, ctx, MathUtils.nowInNano(), journalAddEntryStats));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException(e);
+        }
     }
 
     /**
@@ -1023,7 +1024,6 @@ class Journal extends BookieCriticalThread implements CheckpointSource {
             if (!cbThreadPool.awaitTermination(5, TimeUnit.SECONDS)) {
                 LOG.warn("Couldn't shutdown journal callback thread gracefully. Forcing");
             }
-            cbThreadPool.shutdownNow();
 
             running = false;
             this.interrupt();

@@ -531,7 +531,7 @@ public class GarbageCollectorThread extends SafeRunnable {
         }
         gcExecutor.shutdown();
 
-        if (gcExecutor.awaitTermination(60, TimeUnit.SECONDS)) {
+        if (!gcExecutor.awaitTermination(60, TimeUnit.SECONDS)) {
             LOG.warn("GC executor did not shut down in 60 seconds. Killing");
             gcExecutor.shutdownNow();
         }

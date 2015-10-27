@@ -18,12 +18,12 @@
 package org.apache.bookkeeper.util;
 
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
+
+import io.netty.util.concurrent.FastThreadLocal;
+
 import java.util.Random;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.bookkeeper.proto.BookkeeperInternalCallbacks.GenericCallback;
@@ -47,9 +47,16 @@ import org.slf4j.LoggerFactory;
  *
  */
 public class OrderedSafeExecutor {
-    final ExecutorService threads[];
-    final long threadIds[];
-    final Random rand = new Random();
+    private final SingleThreadExecutorService threads[];
+    private final long threadIds[];
+
+    // Avoid contention on random internal AtomicLong
+    private final FastThreadLocal<Random> rand = new FastThreadLocal<Random>() {
+        @Override
+        protected Random initialValue() throws Exception {
+            return new Random();
+        }
+    };
 
     /**
      * Constructs Safe executor
@@ -67,7 +74,7 @@ public class OrderedSafeExecutor {
             // sets default name
             threadName = "OrderedSafeExecutor";
         }
-        threads = new ExecutorService[numThreads];
+        threads = new SingleThreadExecutorService[numThreads];
         threadIds = new long[numThreads];
         for (int i = 0; i < numThreads; i++) {
             StringBuilder thName = new StringBuilder(threadName);
@@ -76,37 +83,22 @@ public class OrderedSafeExecutor {
             thName.append("-%d");
             ThreadFactoryBuilder tfb = new ThreadFactoryBuilder()
                     .setNameFormat(thName.toString());
-            threads[i] = new ThreadPoolExecutor(1, 1,
-                    0L, TimeUnit.MILLISECONDS,
-                    new UnboundArrayBlockingQueue<Runnable>(),
-                    tfb.build());
-            final int tid = i;
-            try {
-                threads[i].submit(new SafeRunnable() {
-                    @Override
-                    public void safeRun() {
-                        threadIds[tid] = Thread.currentThread().getId();
-                    }
-                }).get();
-            } catch (InterruptedException e) {
-                throw new RuntimeException("Couldn't start thread " + i, e);
-            } catch (ExecutionException e) {
-                throw new RuntimeException("Couldn't start thread " + i, e);
-            }
+            threads[i] = new SingleThreadExecutorService(tfb.build());
+            threadIds[i] = threads[i].getThreadId();
         }
     }
 
-    ExecutorService chooseThread() {
+    SingleThreadExecutorService chooseThread() {
         // skip random # generation in this special case
         if (threads.length == 1) {
             return threads[0];
         }
 
-        return threads[rand.nextInt(threads.length)];
+        return threads[rand.get().nextInt(threads.length)];
 
     }
 
-    ExecutorService chooseThread(Object orderingKey) {
+    SingleThreadExecutorService chooseThread(Object orderingKey) {
         // skip hashcode generation in this special case
         if (threads.length == 1) {
             return threads[0];
@@ -115,7 +107,7 @@ public class OrderedSafeExecutor {
         return threads[MathUtils.signSafeMod(orderingKey.hashCode(), threads.length)];
     }
 
-    ExecutorService chooseThread(long orderingKey) {
+    SingleThreadExecutorService chooseThread(long orderingKey) {
         // skip hashcode generation in this special case
         if (threads.length == 1) {
             return threads[0];
@@ -129,6 +121,10 @@ public class OrderedSafeExecutor {
      */
     public void submit(SafeRunnable r) {
         chooseThread().execute(r);
+    }
+
+    public void execute(SafeRunnable r) {
+        submit(r);
     }
 
     /**
