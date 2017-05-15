@@ -35,6 +35,7 @@
     <module>twitter-ostrich-provider</module>
     <module>codahale-metrics-provider</module>
     <module>datasketches-metrics-provider</module>
+    <module>prometheus-metrics-provider</module>
   </modules>
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
