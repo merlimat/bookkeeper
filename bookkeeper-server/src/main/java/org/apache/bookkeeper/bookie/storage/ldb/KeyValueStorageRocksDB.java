@@ -396,6 +396,11 @@ public class KeyValueStorageRocksDB implements KeyValueStorage {
         }
 
         @Override
+        public void deleteRange(byte[] beginKey, byte[] endKey) {
+            writeBatch.deleteRange(beginKey, endKey);
+        }
+
+        @Override
         public void flush() throws IOException {
             try {
                 db.write(Sync, writeBatch);

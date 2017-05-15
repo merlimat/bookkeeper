@@ -190,9 +190,7 @@ public class EntryLocationIndex implements Closeable {
             return;
         }
 
-        long startTime = System.nanoTime();
-        long deletedCount = 0;
-        log.info("Deleting indexes for {} ledgers", ledgersToDelete);
+        log.info("Deleting indexes for ledgers: {}", ledgersToDelete);
         Batch batch = locationsDb.newBatch();
 
         try {
@@ -204,45 +202,20 @@ public class EntryLocationIndex implements Closeable {
                 firstKeyWrapper.set(ledgerId, 0);
                 lastKeyWrapper.set(ledgerId, Long.MAX_VALUE);
 
-                Entry<byte[], byte[]> firstKeyRes = locationsDb.getCeil(firstKeyWrapper.array);
-                if (firstKeyRes == null || ArrayUtil.getLong(firstKeyRes.getKey(), 0) != ledgerId) {
-                    // No entries found for ledger
-                    log.info("No entries found for ledger {}", ledgerId);
-                    continue;
-                }
+                batch.deleteRange(firstKeyWrapper.array, lastKeyWrapper.array);
+            }
 
-                long firstEntryId = ArrayUtil.getLong(firstKeyRes.getKey(), 8);
-                long lastEntryId = getLastEntryInLedgerInternal(ledgerId);
-                log.info("Deleting index for ledger {} entries ({} -> {})",
-                        new Object[] { ledgerId, firstEntryId, lastEntryId });
+            batch.flush();
 
-                // Iterate over all the keys and remove each of them
-                for (long entryId = firstEntryId; entryId <= lastEntryId; entryId++) {
-                    keyToDelete.set(ledgerId, entryId);
-                    if (log.isDebugEnabled()) {
-                        log.debug("Deleting index for ({}, {})", keyToDelete.getFirst(), keyToDelete.getSecond());
-                    }
-
-                    batch.remove(keyToDelete.array);
-                    ++deletedCount;
-                }
-
-                batch.flush();
-                batch.clear();
+            // Removed from pending set
+            for (long ledgerId : ledgersToDelete) {
+                deletedLedgers.remove(ledgerId);
             }
         } finally {
             firstKeyWrapper.recycle();
             lastKeyWrapper.recycle();
             keyToDelete.recycle();
             batch.close();
-        }
-
-        log.info("Deleted indexes for {} entries in {} seconds", deletedCount,
-                TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startTime) / 1000.0);
-
-        // Removed from pending set
-        for (long ledgerId : ledgersToDelete) {
-            deletedLedgers.remove(ledgerId);
         }
     }
 

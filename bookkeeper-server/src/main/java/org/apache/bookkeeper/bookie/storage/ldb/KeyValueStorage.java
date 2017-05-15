@@ -119,6 +119,8 @@ public interface KeyValueStorage extends Closeable {
 
         void remove(byte[] key);
 
+        void deleteRange(byte[] beginKey, byte[] endKey);
+
         void clear();
 
         void flush() throws IOException;
