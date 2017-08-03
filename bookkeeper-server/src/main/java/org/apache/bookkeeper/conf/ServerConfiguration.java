@@ -74,6 +74,7 @@ public class ServerConfiguration extends AbstractConfiguration {
     protected final static String BOOKIE_PORT = "bookiePort";
     protected final static String LISTENING_INTERFACE = "listeningInterface";
     protected final static String ALLOW_LOOPBACK = "allowLoopback";
+    protected final static String ADVERTISED_ADDRESS = "advertisedAddress";
 
     protected final static String JOURNAL_DIR = "journalDirectory";
     protected final static String JOURNAL_DIRS = "journalDirectories";
@@ -206,7 +207,7 @@ public class ServerConfiguration extends AbstractConfiguration {
 
     /**
      * Get wait time in millis for garbage collection of overreplicated ledgers
-     * 
+     *
      * @return gc wait time
      */
     public long getGcOverreplicatedLedgerWaitTimeMillis() {
@@ -215,14 +216,14 @@ public class ServerConfiguration extends AbstractConfiguration {
 
     /**
      * Set wait time for garbage collection of overreplicated ledgers. Default: 1 day
-     * 
+     *
      * A ledger can be overreplicated under the following circumstances:
      * 1. The ledger with few entries has bk1 and bk2 as its ensemble.
      * 2. bk1 crashes.
      * 3. bk3 replicates the ledger from bk2 and updates the ensemble to bk2 and bk3.
      * 4. bk1 comes back up.
      * 5. Now there are 3 copies of the ledger.
-     *  
+     *
      * @param gcWaitTime
      * @return server configuration
      */
@@ -505,6 +506,43 @@ public class ServerConfiguration extends AbstractConfiguration {
      */
     public ServerConfiguration setAllowLoopback(boolean allow) {
         this.setProperty(ALLOW_LOOPBACK, allow);
+        return this;
+    }
+
+    /**
+     * Get the configured advertised address for the bookie.
+     *
+     * If present, this setting will take precedence over the
+     * {@link #setListeningInterface(String)} and
+     * {@link #setUseHostNameAsBookieID(boolean)}.
+     *
+     * @see #setAdvertisedAddress(String)
+     * @return the configure address to be advertised
+     */
+    public String getAdvertisedAddress() {
+        return this.getString(ADVERTISED_ADDRESS, null);
+    }
+
+    /**
+     * Configure the bookie to advertise a specific address.
+     *
+     * By default, a bookie will advertise either its own IP or hostname,
+     * depending on the {@link getUseHostNameAsBookieID()} setting.
+     *
+     * When the advertised is set to a non-empty string, the bookie will
+     * register and advertise using this address.
+     *
+     * If present, this setting will take precedence over the
+     * {@link #setListeningInterface(String)} and
+     * {@link #setUseHostNameAsBookieID(boolean)}.
+     *
+     * @see #getAdvertisedAddress()
+     * @param allow
+     *            whether to allow loopback interfaces
+     * @return server configuration
+     */
+    public ServerConfiguration setAdvertisedAddress(String advertisedAddress) {
+        this.setProperty(ADVERTISED_ADDRESS, advertisedAddress);
         return this;
     }
 
