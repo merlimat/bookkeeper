@@ -40,7 +40,6 @@ fi
 
 if [ "x$JMXDISABLE" = "x" ]
 then
-  echo "JMX enabled by default" >&2
   # for some reason these two options are necessary on jdk6 on Ubuntu
   #   accord to the docs they are not necessary, but otw jconsole cannot
   #   do a local attach
@@ -70,14 +69,28 @@ else
   JAVA=$JAVA_HOME/bin/java
 fi
 
-# exclude tests jar
-RELEASE_JAR=$(ls ${BK_HOME}/bookkeeper-server-*.jar 2> /dev/null | grep -v tests | tail -1)
+find-server-jar() {
+  DIR=$1
+  cd $DIR
+  for f in *.jar; do
+    if [[ $f =~ ^bookkeeper-server-[0-9\\.]*(-SNAPSHOT)?.jar$ ]]; then
+      echo $DIR/$f
+        return
+    fi
+  done
+}
+
+RELEASE_JAR=$(find-server-jar ${BK_HOME})
 if [ -n "${RELEASE_JAR}" ]; then
-  BOOKIE_JAR=$RELEASE_JAR
+  BOOKIE_JAR=${RELEASE_JAR}
+else
+  RELEASE_JAR=$(find-server-jar ${BK_HOME}/lib)
+  if [ -n "${RELEASE_JAR}" ]; then
+    BOOKIE_JAR=${RELEASE_JAR}
+  fi
 fi
 
-# exclude tests jar
-BUILT_JAR=$(ls ${BK_HOME}/target/bookkeeper-server-*.jar 2> /dev/null | grep -v tests | tail -1)
+BUILT_JAR=$(find-server-jar ${BK_HOME}/target)
 
 if [ -z "${BUILT_JAR}" ] && [ -z "${BOOKIE_JAR}" ]; then
   echo "Couldn't find bookkeeper jar."
@@ -91,7 +104,7 @@ if [ -z "${BUILT_JAR}" ] && [ -z "${BOOKIE_JAR}" ]; then
       ;;
   esac
 
-  BUILT_JAR=$(ls ${BK_HOME}/target/bookkeeper-server-*.jar 2> /dev/null | grep -v tests | tail -1)
+  BUILT_JAR=$(find-server-jar ${BK_HOME}/target)
   if [ -n "${BUILT_JAR}" ]; then
     BOOKIE_JAR=$BUILT_JAR
   fi

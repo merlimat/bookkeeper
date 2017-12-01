@@ -1100,6 +1100,8 @@ public class PerChannelBookieClient extends ChannelInboundHandlerAdapter {
                 return StatusCode.EFENCED;
             case BookieProtocol.EREADONLY:
                 return StatusCode.EREADONLY;
+            case BookieProtocol.ETOOMANYREQUESTS:
+                return StatusCode.ETOOMANYREQUESTS;
             default:
                 throw new IllegalArgumentException("Invalid error code: " + errorCode);
         }
@@ -1830,6 +1832,9 @@ public class PerChannelBookieClient extends ChannelInboundHandlerAdapter {
                 break;
             case EREADONLY:
                 rcToRet = BKException.Code.WriteOnReadOnlyBookieException;
+                break;
+            case ETOOMANYREQUESTS:
+                rcToRet = BKException.Code.TooManyRequestsException;
                 break;
             default:
                 break;
