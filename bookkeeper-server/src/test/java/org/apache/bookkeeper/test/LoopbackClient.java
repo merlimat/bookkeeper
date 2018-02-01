@@ -1,5 +1,18 @@
 package org.apache.bookkeeper.test;
 
+import java.io.IOException;
+import java.util.Arrays;
+
+import org.apache.bookkeeper.conf.ClientConfiguration;
+import org.apache.bookkeeper.net.BookieSocketAddress;
+import org.apache.bookkeeper.proto.BookieClient;
+import org.apache.bookkeeper.proto.BookieProtocol;
+import org.apache.bookkeeper.proto.BookkeeperInternalCallbacks.WriteCallback;
+import org.apache.bookkeeper.util.ByteBufList;
+import org.apache.bookkeeper.util.OrderedSafeExecutor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 /*
  *
  * Licensed to the Apache Software Foundation (ASF) under one
@@ -24,18 +37,6 @@ package org.apache.bookkeeper.test;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
-
-import java.io.IOException;
-import java.util.Arrays;
-
-import org.apache.bookkeeper.conf.ClientConfiguration;
-import org.apache.bookkeeper.net.BookieSocketAddress;
-import org.apache.bookkeeper.proto.BookieClient;
-import org.apache.bookkeeper.proto.BookieProtocol;
-import org.apache.bookkeeper.proto.BookkeeperInternalCallbacks.WriteCallback;
-import org.apache.bookkeeper.util.OrderedSafeExecutor;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * This class tests BookieClient. It just sends the a new entry to itself.
@@ -78,7 +79,8 @@ class LoopbackClient implements WriteCallback {
         byte[] passwd = new byte[20];
         Arrays.fill(passwd, (byte) 'a');
 
-        client.addEntry(addr, ledgerId, passwd, entry, Unpooled.wrappedBuffer(data), cb, ctx, BookieProtocol.FLAG_NONE);
+        client.addEntry(addr, ledgerId, passwd, entry, ByteBufList.get(Unpooled.wrappedBuffer(data)), cb, ctx,
+                BookieProtocol.FLAG_NONE);
     }
 
     public void writeComplete(int rc, long ledgerId, long entryId, BookieSocketAddress addr, Object ctx) {

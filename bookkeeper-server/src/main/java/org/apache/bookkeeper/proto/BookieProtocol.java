@@ -1,5 +1,8 @@
 package org.apache.bookkeeper.proto;
 
+import org.apache.bookkeeper.proto.BookkeeperProtocol.AuthMessage;
+import org.apache.bookkeeper.util.ByteBufList;
+
 /*
  *
  * Licensed to the Apache Software Foundation (ASF) under one
@@ -25,8 +28,6 @@ import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.util.Recycler;
 import io.netty.util.Recycler.Handle;
-
-import org.apache.bookkeeper.proto.BookkeeperProtocol.AuthMessage;
 
 /**
  * The packets of the Bookie protocol all have a 4-byte integer indicating the
@@ -187,7 +188,7 @@ public interface BookieProtocol {
         long entryId;
         short flags;
         byte[] masterKey;
-        
+
         private void reset() {
             protocolVersion = 0;
             opCode = 0;
@@ -243,16 +244,70 @@ public interface BookieProtocol {
     }
 
     static class AddRequest extends Request {
-        ByteBuf data;
-        
+        ByteBufList data;
+
         private void reset() {
             super.reset();
             data = null;
         }
 
         static AddRequest create(byte protocolVersion, long ledgerId, long entryId, short flags, byte[] masterKey,
-                ByteBuf data) {
+                ByteBufList data) {
             AddRequest add = RECYCLER.get();
+            add.protocolVersion = protocolVersion;
+            add.opCode = ADDENTRY;
+            add.ledgerId = ledgerId;
+            add.entryId = entryId;
+            add.flags = flags;
+            add.masterKey = masterKey;
+            add.data = data.retain();
+            return add;
+        }
+
+        ByteBufList getData() {
+            // We need to have different ByteBufList instances for each bookie write
+            return ByteBufList.clone(data);
+        }
+
+        boolean isRecoveryAdd() {
+            return (flags & FLAG_RECOVERY) == FLAG_RECOVERY;
+        }
+
+        void release() {
+            data.release();
+        }
+
+        private final Handle<AddRequest> recyclerHandle;
+        private AddRequest(Handle<AddRequest> recyclerHandle) {
+            this.recyclerHandle = recyclerHandle;
+        }
+
+        private static final Recycler<AddRequest> RECYCLER = new Recycler<AddRequest>() {
+            protected AddRequest newObject(Handle<AddRequest> handle) {
+                return new AddRequest(handle);
+            }
+        };
+
+        public void recycle() {
+            reset();
+            recyclerHandle.recycle(this);
+        }
+    }
+
+    /**
+     * This is similar to add request, but it used when processin the request on the bookie side
+     */
+    static class ParsedAddRequest extends Request {
+        ByteBuf data;
+
+        private void reset() {
+            super.reset();
+            data = null;
+        }
+
+        static ParsedAddRequest create(byte protocolVersion, long ledgerId, long entryId, short flags, byte[] masterKey,
+                ByteBuf data) {
+            ParsedAddRequest add = RECYCLER.get();
             add.protocolVersion = protocolVersion;
             add.opCode = ADDENTRY;
             add.ledgerId = ledgerId;
@@ -275,14 +330,14 @@ public interface BookieProtocol {
             data.release();
         }
 
-        private final Handle<AddRequest> recyclerHandle;
-        private AddRequest(Handle<AddRequest> recyclerHandle) {
+        private final Handle<ParsedAddRequest> recyclerHandle;
+        private ParsedAddRequest(Handle<ParsedAddRequest> recyclerHandle) {
             this.recyclerHandle = recyclerHandle;
         }
 
-        private static final Recycler<AddRequest> RECYCLER = new Recycler<AddRequest>() {
-            protected AddRequest newObject(Handle<AddRequest> handle) {
-                return new AddRequest(handle);
+        private static final Recycler<ParsedAddRequest> RECYCLER = new Recycler<ParsedAddRequest>() {
+            protected ParsedAddRequest newObject(Handle<ParsedAddRequest> handle) {
+                return new ParsedAddRequest(handle);
             }
         };
 
@@ -322,7 +377,7 @@ public interface BookieProtocol {
         int errorCode;
         long ledgerId;
         long entryId;
-        
+
         private void reset() {
             protocolVersion = 0;
             opCode = 0;

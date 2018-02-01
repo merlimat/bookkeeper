@@ -19,9 +19,6 @@
  */
 package org.apache.bookkeeper.client;
 
-import io.netty.buffer.ByteBuf;
-import io.netty.buffer.Unpooled;
-
 import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.HashSet;
@@ -36,10 +33,13 @@ import org.apache.bookkeeper.proto.BookieProtocol;
 import org.apache.bookkeeper.proto.BookkeeperInternalCallbacks.GenericCallback;
 import org.apache.bookkeeper.proto.BookkeeperInternalCallbacks.MultiCallback;
 import org.apache.bookkeeper.proto.BookkeeperInternalCallbacks.WriteCallback;
+import org.apache.bookkeeper.util.ByteBufList;
 import org.apache.bookkeeper.util.OrderedSafeExecutor.OrderedSafeGenericCallback;
 import org.apache.zookeeper.AsyncCallback;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import io.netty.buffer.Unpooled;
 
 /**
  * This is the helper class for replicating the fragments from one bookie to
@@ -119,7 +119,7 @@ public class LedgerFragmentReplicator {
      * then it re-replicates that batched entry fragments one by one. After
      * re-replication of all batched entry fragments, it will update the
      * ensemble info with new Bookie once
-     * 
+     *
      * @param lh
      *            LedgerHandle for the ledger
      * @param lf
@@ -223,7 +223,7 @@ public class LedgerFragmentReplicator {
      * This method asynchronously recovers a specific ledger entry by reading
      * the values via the BookKeeper Client (which would read it from the other
      * replicas) and then writing it to the chosen new bookie.
-     * 
+     *
      * @param entryId
      *            Ledger Entry ID to recover.
      * @param lh
@@ -260,7 +260,7 @@ public class LedgerFragmentReplicator {
                  */
                 LedgerEntry entry = seq.nextElement();
                 byte[] data = entry.getEntry();
-                ByteBuf toSend = lh.getDigestManager()
+                ByteBufList toSend = lh.getDigestManager()
                         .computeDigestAndPackageForSending(entryId,
                                 lh.getLastAddConfirmed(), entry.getLength(),
                                 Unpooled.wrappedBuffer(data, 0, data.length));
@@ -297,7 +297,7 @@ public class LedgerFragmentReplicator {
             }
         }, null);
     }
-    
+
     /**
      * Callback for recovery of a single ledger fragment. Once the fragment has
      * had all entries replicated, update the ensemble in zookeeper. Once

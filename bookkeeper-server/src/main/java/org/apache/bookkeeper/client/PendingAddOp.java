@@ -18,10 +18,6 @@
 package org.apache.bookkeeper.client;
 
 import static com.google.common.base.Preconditions.checkNotNull;
-import io.netty.buffer.ByteBuf;
-import io.netty.util.Recycler;
-import io.netty.util.Recycler.Handle;
-import io.netty.util.ReferenceCountUtil;
 
 import java.util.concurrent.TimeUnit;
 
@@ -30,6 +26,7 @@ import org.apache.bookkeeper.net.BookieSocketAddress;
 import org.apache.bookkeeper.proto.BookieProtocol;
 import org.apache.bookkeeper.proto.BookkeeperInternalCallbacks.WriteCallback;
 import org.apache.bookkeeper.stats.OpStatsLogger;
+import org.apache.bookkeeper.util.ByteBufList;
 import org.apache.bookkeeper.util.MathUtils;
 import org.apache.bookkeeper.util.SafeRunnable;
 import org.slf4j.Logger;
@@ -38,6 +35,11 @@ import org.slf4j.LoggerFactory;
 import com.carrotsearch.hppc.IntArrayList;
 import com.carrotsearch.hppc.IntHashSet;
 import com.carrotsearch.hppc.procedures.IntProcedure;
+
+import io.netty.buffer.ByteBuf;
+import io.netty.util.Recycler;
+import io.netty.util.Recycler.Handle;
+import io.netty.util.ReferenceCountUtil;
 
 /**
  * This represents a pending add operation. When it has got success from all
@@ -52,7 +54,7 @@ class PendingAddOp extends SafeRunnable implements WriteCallback, IntProcedure {
     private final static Logger LOG = LoggerFactory.getLogger(PendingAddOp.class);
 
     ByteBuf payload;
-    ByteBuf toSend;
+    ByteBufList toSend;
     AddCallback cb;
     Object ctx;
     long entryId;
@@ -69,7 +71,7 @@ class PendingAddOp extends SafeRunnable implements WriteCallback, IntProcedure {
     long currentLedgerLength;
     int pendingWriteRequests;
     boolean callbackTriggered;
-    
+
     private void reset() {
         payload = null;
         toSend = null;

@@ -53,6 +53,7 @@ import org.apache.bookkeeper.proto.BookkeeperProtocol.StatusCode;
 import org.apache.bookkeeper.stats.NullStatsLogger;
 import org.apache.bookkeeper.stats.OpStatsLogger;
 import org.apache.bookkeeper.stats.StatsLogger;
+import org.apache.bookkeeper.util.ByteBufList;
 import org.apache.bookkeeper.util.MathUtils;
 import org.apache.bookkeeper.util.OrderedSafeExecutor;
 import org.apache.bookkeeper.util.SafeRunnable;
@@ -246,6 +247,7 @@ public class PerChannelBookieClient extends ChannelInboundHandlerAdapter {
             public void initChannel(SocketChannel ch) throws Exception {
                 ChannelPipeline pipeline = ch.pipeline();
                 pipeline.addLast("lengthbasedframedecoder", new LengthFieldBasedFrameDecoder(MAX_FRAME_LENGTH, 0, 4, 0, 4));
+                pipeline.addLast("bytebufList", ByteBufList.ENCODER_WITH_SIZE);
                 pipeline.addLast("lengthprepender", new LengthFieldPrepender(4));
                 pipeline.addLast("bookieProtoEncoder", new BookieProtoEncoding.RequestEncoder(extRegistry));
                 pipeline.addLast("bookieProtoDecoder", new BookieProtoEncoding.ResponseDecoder(extRegistry));
@@ -372,7 +374,7 @@ public class PerChannelBookieClient extends ChannelInboundHandlerAdapter {
      * @param options
      *          Add options
      */
-    void addEntry(final long ledgerId, byte[] masterKey, final long entryId, ByteBuf toSend, WriteCallback cb,
+    void addEntry(final long ledgerId, byte[] masterKey, final long entryId, ByteBufList toSend, WriteCallback cb,
                   Object ctx, final int options) {
         Object request = null;
         CompletionKey completion = null;
@@ -392,8 +394,7 @@ public class PerChannelBookieClient extends ChannelInboundHandlerAdapter {
                     .setOperation(OperationType.ADD_ENTRY)
                     .setTxnId(txnId);
 
-            byte[] toSendArray = new byte[toSend.readableBytes()];
-            toSend.getBytes(toSend.readerIndex(), toSendArray);
+            byte[] toSendArray = toSend.toArray();
             AddRequest.Builder addBuilder = AddRequest.newBuilder()
                     .setLedgerId(ledgerId)
                     .setEntryId(entryId)
@@ -881,7 +882,7 @@ public class PerChannelBookieClient extends ChannelInboundHandlerAdapter {
         long entryId;
         CompletionValue completionValue;
         BookieProtocol.Response response;
-        
+
         private void reset() {
             pcbc = null;
             operationType = null;
@@ -1070,7 +1071,7 @@ public class PerChannelBookieClient extends ChannelInboundHandlerAdapter {
             this.entryId = -1;
             this.startTime = -1L;
         }
-        
+
         public CompletionValue() {
             this.ctx = null;
             this.ledgerId = -1;
@@ -1140,7 +1141,7 @@ public class PerChannelBookieClient extends ChannelInboundHandlerAdapter {
         WriteCallback originalCallback;
         Object originalCtx;
         CompletionKey completionKey;
-        
+
         private void reset() {
             super.reset();
             cb = null;
@@ -1220,7 +1221,7 @@ public class PerChannelBookieClient extends ChannelInboundHandlerAdapter {
             operationType = null;
             requestAt = -1L;
         }
-        
+
         CompletionKey(PerChannelBookieClient pcbc, long txnId, OperationType operationType) {
             this.pcbc = pcbc;
             this.txnId = txnId;
@@ -1254,7 +1255,7 @@ public class PerChannelBookieClient extends ChannelInboundHandlerAdapter {
     static class V2CompletionKey extends CompletionKey {
         long ledgerId;
         long entryId;
-        
+
         private void reset() {
             super.reset();
             ledgerId = -1L;

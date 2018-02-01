@@ -21,18 +21,9 @@
 package org.apache.bookkeeper.proto;
 
 import static com.google.common.base.Charsets.UTF_8;
-import io.netty.buffer.ByteBuf;
-import io.netty.buffer.Unpooled;
-import io.netty.channel.EventLoopGroup;
-import io.netty.channel.nio.NioEventLoopGroup;
-import io.netty.util.Recycler;
-import io.netty.util.Recycler.Handle;
-import io.netty.util.concurrent.DefaultThreadFactory;
 
 import java.io.IOException;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
@@ -51,6 +42,7 @@ import org.apache.bookkeeper.proto.BookkeeperInternalCallbacks.ReadEntryCallback
 import org.apache.bookkeeper.proto.BookkeeperInternalCallbacks.WriteCallback;
 import org.apache.bookkeeper.stats.NullStatsLogger;
 import org.apache.bookkeeper.stats.StatsLogger;
+import org.apache.bookkeeper.util.ByteBufList;
 import org.apache.bookkeeper.util.OrderedSafeExecutor;
 import org.apache.bookkeeper.util.SafeRunnable;
 import org.slf4j.Logger;
@@ -58,6 +50,14 @@ import org.slf4j.LoggerFactory;
 
 import com.google.common.collect.Lists;
 import com.google.protobuf.ExtensionRegistry;
+
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
+import io.netty.channel.EventLoopGroup;
+import io.netty.channel.nio.NioEventLoopGroup;
+import io.netty.util.Recycler;
+import io.netty.util.Recycler.Handle;
+import io.netty.util.concurrent.DefaultThreadFactory;
 
 /**
  * Implements the client-side part of the BookKeeper protocol.
@@ -190,7 +190,7 @@ public class BookieClient implements PerChannelBookieClientFactory {
     }
 
     public void addEntry(final BookieSocketAddress addr, final long ledgerId, final byte[] masterKey,
-            final long entryId, final ByteBuf toSend, final WriteCallback cb, final Object ctx, final int options) {
+            final long entryId, final ByteBufList toSend, final WriteCallback cb, final Object ctx, final int options) {
         closeLock.readLock().lock();
         try {
             final PerChannelBookieClientPool client = lookupClient(addr);
@@ -215,7 +215,7 @@ public class BookieClient implements PerChannelBookieClientFactory {
         private final Handle<ChannelReadyForAddEntryCallback> recyclerHandle;
 
         private BookieClient bookieClient;
-        private ByteBuf toSend;
+        private ByteBufList toSend;
         private long ledgerId;
         private long entryId;
         private BookieSocketAddress addr;
@@ -223,7 +223,7 @@ public class BookieClient implements PerChannelBookieClientFactory {
         private WriteCallback cb;
         private int options;
         private byte[] masterKey;
-        
+
         private void reset() {
             bookieClient = null;
             toSend = null;
@@ -236,7 +236,7 @@ public class BookieClient implements PerChannelBookieClientFactory {
             masterKey = null;
         }
 
-        static ChannelReadyForAddEntryCallback create(BookieClient bookieClient, ByteBuf toSend, long ledgerId,
+        static ChannelReadyForAddEntryCallback create(BookieClient bookieClient, ByteBufList toSend, long ledgerId,
                 long entryId, BookieSocketAddress addr, Object ctx, WriteCallback cb, int options, byte[] masterKey) {
             ChannelReadyForAddEntryCallback callback = RECYCLER.get();
             callback.bookieClient = bookieClient;
@@ -425,7 +425,7 @@ public class BookieClient implements PerChannelBookieClientFactory {
 
         for (int i = 0; i < 100000; i++) {
             counter.inc();
-            bc.addEntry(addr, ledger, new byte[0], i, Unpooled.wrappedBuffer(hello), cb, counter, 0);
+            bc.addEntry(addr, ledger, new byte[0], i, ByteBufList.get(Unpooled.wrappedBuffer(hello)), cb, counter, 0);
         }
         counter.wait(0);
         System.out.println("Total = " + counter.total());

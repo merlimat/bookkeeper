@@ -1,5 +1,28 @@
 package org.apache.bookkeeper.test;
 
+import static org.junit.Assert.assertEquals;
+
+import java.io.File;
+import java.nio.ByteBuffer;
+import java.util.Arrays;
+
+import org.apache.bookkeeper.client.BKException;
+import org.apache.bookkeeper.conf.ClientConfiguration;
+import org.apache.bookkeeper.conf.ServerConfiguration;
+import org.apache.bookkeeper.conf.TestBKConfiguration;
+import org.apache.bookkeeper.net.BookieSocketAddress;
+import org.apache.bookkeeper.proto.BookieClient;
+import org.apache.bookkeeper.proto.BookieProtocol;
+import org.apache.bookkeeper.proto.BookieServer;
+import org.apache.bookkeeper.proto.BookkeeperInternalCallbacks.ReadEntryCallback;
+import org.apache.bookkeeper.proto.BookkeeperInternalCallbacks.WriteCallback;
+import org.apache.bookkeeper.util.ByteBufList;
+import org.apache.bookkeeper.util.IOUtils;
+import org.apache.bookkeeper.util.OrderedSafeExecutor;
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Test;
+
 /*
  *
  * Licensed to the Apache Software Foundation (ASF) under one
@@ -25,28 +48,6 @@ import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
-
-import java.io.File;
-import java.nio.ByteBuffer;
-import java.util.Arrays;
-
-import org.apache.bookkeeper.client.BKException;
-import org.apache.bookkeeper.conf.ClientConfiguration;
-import org.apache.bookkeeper.conf.ServerConfiguration;
-import org.apache.bookkeeper.net.BookieSocketAddress;
-import org.apache.bookkeeper.conf.TestBKConfiguration;
-import org.apache.bookkeeper.proto.BookieClient;
-import org.apache.bookkeeper.proto.BookieProtocol;
-import org.apache.bookkeeper.proto.BookieServer;
-import org.apache.bookkeeper.proto.BookkeeperInternalCallbacks.ReadEntryCallback;
-import org.apache.bookkeeper.proto.BookkeeperInternalCallbacks.WriteCallback;
-import org.apache.bookkeeper.util.OrderedSafeExecutor;
-import org.apache.bookkeeper.util.IOUtils;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
-
-import static org.junit.Assert.*;
 
 public class BookieClientTest {
     BookieServer bs;
@@ -135,7 +136,7 @@ public class BookieClientTest {
         ResultStruct arc = new ResultStruct();
 
         BookieClient bc = new BookieClient(new ClientConfiguration(), eventLoopGroup, executor);
-        ByteBuf bb = createByteBuffer(1, 1, 1);
+        ByteBufList bb = createByteBuffer(1, 1, 1);
         bc.addEntry(addr, 1, passwd, 1, bb, wrcb, arc, BookieProtocol.FLAG_NONE);
         synchronized (arc) {
             arc.wait(1000);
@@ -220,13 +221,13 @@ public class BookieClientTest {
         }
     }
 
-    private ByteBuf createByteBuffer(int i, long lid, long eid) {
+    private ByteBufList createByteBuffer(int i, long lid, long eid) {
         ByteBuf bb = Unpooled.buffer(4 + 24);
         bb.writeLong(lid);
         bb.writeLong(eid);
-        bb.writeLong(eid - 1); 
+        bb.writeLong(eid - 1);
         bb.writeInt(i);
-        return bb;
+        return ByteBufList.get(bb);
     }
 
     @Test(timeout=60000)

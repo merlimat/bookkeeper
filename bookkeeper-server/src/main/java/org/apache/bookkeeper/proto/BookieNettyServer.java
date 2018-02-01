@@ -54,6 +54,7 @@ import org.apache.bookkeeper.bookie.Bookie;
 import org.apache.bookkeeper.bookie.BookieException;
 import org.apache.bookkeeper.conf.ServerConfiguration;
 import org.apache.bookkeeper.processor.RequestProcessor;
+import org.apache.bookkeeper.util.ByteBufList;
 import org.apache.commons.lang.SystemUtils;
 import org.apache.zookeeper.KeeperException;
 import org.slf4j.Logger;
@@ -176,6 +177,9 @@ class BookieNettyServer {
                 }
 
                 ChannelPipeline pipeline = ch.pipeline();
+
+                // For ByteBufList, skip the usual LengthFieldPrepender and have the encoder itself to add it
+                pipeline.addLast("bytebufList", ByteBufList.ENCODER_WITH_SIZE);
                 pipeline.addLast("lengthbaseddecoder", new LengthFieldBasedFrameDecoder(maxMessageSize, 0, 4, 0, 4));
                 pipeline.addLast("lengthprepender", new LengthFieldPrepender(4));
 

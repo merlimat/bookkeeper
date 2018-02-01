@@ -31,7 +31,6 @@ import org.slf4j.LoggerFactory;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.Channel;
 import io.netty.util.Recycler;
-import io.netty.util.Recycler.Handle;
 
 /**
  * Processes add entry requests
@@ -41,7 +40,7 @@ class WriteEntryProcessor extends PacketProcessorBase implements WriteCallback {
     private final static Logger LOG = LoggerFactory.getLogger(WriteEntryProcessor.class);
 
     long startTimeNanos;
-    
+
     protected void reset() {
         super.reset();
         startTimeNanos = -1L;
@@ -56,8 +55,8 @@ class WriteEntryProcessor extends PacketProcessorBase implements WriteCallback {
 
     @Override
     protected void processPacket() {
-        assert (request instanceof BookieProtocol.AddRequest);
-        BookieProtocol.AddRequest add = (BookieProtocol.AddRequest) request;
+        assert (request instanceof BookieProtocol.ParsedAddRequest);
+        BookieProtocol.ParsedAddRequest add = (BookieProtocol.ParsedAddRequest) request;
 
         if (requestProcessor.bookie.isReadOnly()) {
             LOG.warn("BookieServer is running in readonly mode,"
@@ -119,8 +118,8 @@ class WriteEntryProcessor extends PacketProcessorBase implements WriteCallback {
         sendResponse(rc,
                      ResponseBuilder.buildAddResponse(request),
                      requestProcessor.addRequestStats);
-        
-        ((BookieProtocol.AddRequest) request).recycle();
+
+        ((BookieProtocol.ParsedAddRequest) request).recycle();
         recycle();
     }
 

@@ -1,5 +1,14 @@
 package org.apache.bookkeeper.client;
 
+import java.security.GeneralSecurityException;
+
+import org.apache.bookkeeper.client.BKException.BKDigestMatchException;
+import org.apache.bookkeeper.client.BookKeeper.DigestType;
+import org.apache.bookkeeper.util.ByteBufComparator;
+import org.apache.bookkeeper.util.ByteBufList;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 /**
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
@@ -20,15 +29,6 @@ package org.apache.bookkeeper.client;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.PooledByteBufAllocator;
-
-import java.security.GeneralSecurityException;
-
-import org.apache.bookkeeper.client.BKException.BKDigestMatchException;
-import org.apache.bookkeeper.client.BookKeeper.DigestType;
-import org.apache.bookkeeper.util.ByteBufComparator;
-import org.apache.bookkeeper.util.DoubleByteBuf;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * This class takes an entry, attaches a digest to it and packages it with relevant
@@ -82,20 +82,20 @@ abstract class DigestManager {
      * @return
      */
 
-    public DoubleByteBuf computeDigestAndPackageForSending(long entryId, long lastAddConfirmed, long length, ByteBuf data) {
+    public ByteBufList computeDigestAndPackageForSending(long entryId, long lastAddConfirmed, long length, ByteBuf data) {
         ByteBuf headersBuffer = PooledByteBufAllocator.DEFAULT.buffer(METADATA_LENGTH + macCodeLength);
         headersBuffer.writeLong(ledgerId);
         headersBuffer.writeLong(entryId);
         headersBuffer.writeLong(lastAddConfirmed);
         headersBuffer.writeLong(length);
-        
+
         Digest digest = getDigest();
         digest.update(headersBuffer);
         digest.update(data);
         digest.getValue(headersBuffer);
         digest.recycle();
 
-        return DoubleByteBuf.get(headersBuffer, data);
+        return ByteBufList.get(headersBuffer, data);
     }
 
     private void verifyDigest(ByteBuf dataReceived) throws BKDigestMatchException {
