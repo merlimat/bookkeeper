@@ -146,8 +146,6 @@ public class DoubleByteBufTest {
         assertTrue(b1.isDirect());
         assertTrue(b2.isDirect());
         assertTrue(b.isDirect());
-        ByteBuffer nioBuffer = b.nioBuffer();
-        assertTrue(nioBuffer.isDirect());
     }
 
     /**
