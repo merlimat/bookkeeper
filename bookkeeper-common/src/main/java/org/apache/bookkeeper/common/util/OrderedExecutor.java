@@ -33,7 +33,6 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
-import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -41,6 +40,7 @@ import java.util.concurrent.TimeoutException;
 
 import lombok.extern.slf4j.Slf4j;
 
+import org.apache.bookkeeper.common.collections.BlockingMpscQueue;
 import org.apache.bookkeeper.stats.Gauge;
 import org.apache.bookkeeper.stats.NullStatsLogger;
 import org.apache.bookkeeper.stats.OpStatsLogger;
@@ -186,7 +186,7 @@ public class OrderedExecutor implements ExecutorService {
     }
 
     protected ThreadPoolExecutor createSingleThreadExecutor(ThreadFactory factory) {
-        return new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>(), factory);
+        return new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS, new BlockingMpscQueue<>(10000), factory);
     }
 
     protected ExecutorService getBoundedExecutor(ThreadPoolExecutor executor) {

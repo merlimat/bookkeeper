@@ -158,7 +158,7 @@ public class PerChannelBookieClient extends ChannelInboundHandlerAdapter {
     final int startTLSTimeout;
 
     private final ConcurrentOpenHashMap<CompletionKey, CompletionValue> completionObjects =
-        new ConcurrentOpenHashMap<CompletionKey, CompletionValue>();
+        new ConcurrentOpenHashMap<CompletionKey, CompletionValue>(16000, 48);
 
     // Map that hold duplicated read requests. The idea is to only use this map (synchronized) when there is a duplicate
     // read request for the same ledgerId/entryId
@@ -891,7 +891,9 @@ public class PerChannelBookieClient extends ChannelInboundHandlerAdapter {
                 }
             });
 
-            channel.writeAndFlush(request, promise);
+            channel.eventLoop().execute(() -> {
+                channel.writeAndFlush(request, promise);
+            });
         } catch (Throwable e) {
             LOG.warn("Operation {} failed", requestToString(request), e);
             errorOut(key);

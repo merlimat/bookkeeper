@@ -39,12 +39,12 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.bookkeeper.bookie.LedgerDirsManager.NoWritableLedgerDirException;
+import org.apache.bookkeeper.common.collections.BlockingMpscQueue;
 import org.apache.bookkeeper.common.collections.RecyclableArrayList;
 import org.apache.bookkeeper.conf.ServerConfiguration;
 import org.apache.bookkeeper.proto.BookkeeperInternalCallbacks.WriteCallback;
@@ -54,7 +54,6 @@ import org.apache.bookkeeper.stats.OpStatsLogger;
 import org.apache.bookkeeper.stats.StatsLogger;
 import org.apache.bookkeeper.util.IOUtils;
 import org.apache.bookkeeper.util.MathUtils;
-import org.apache.bookkeeper.util.collections.GrowableArrayBlockingQueue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -587,8 +586,8 @@ public class Journal extends BookieCriticalThread implements CheckpointSource {
     private final ExecutorService cbThreadPool;
 
     // journal entry queue to commit
-    final BlockingQueue<QueueEntry> queue = new GrowableArrayBlockingQueue<QueueEntry>();
-    final BlockingQueue<ForceWriteRequest> forceWriteRequests = new GrowableArrayBlockingQueue<ForceWriteRequest>();
+    final BlockingMpscQueue<QueueEntry> queue = new BlockingMpscQueue<>(16 * 1024);
+    final BlockingMpscQueue<ForceWriteRequest> forceWriteRequests = new BlockingMpscQueue<>(16 * 1024);
 
     volatile boolean running = true;
     private final LedgerDirsManager ledgerDirsManager;
@@ -844,27 +843,29 @@ public class Journal extends BookieCriticalThread implements CheckpointSource {
         }
     }
 
-    public void logAddEntry(ByteBuffer entry, boolean ackBeforeSync, WriteCallback cb, Object ctx) {
+    public void logAddEntry(ByteBuffer entry, boolean ackBeforeSync, WriteCallback cb, Object ctx)
+            throws InterruptedException {
         logAddEntry(Unpooled.wrappedBuffer(entry), ackBeforeSync, cb, ctx);
     }
 
     /**
      * record an add entry operation in journal.
      */
-    public void logAddEntry(ByteBuf entry, boolean ackBeforeSync, WriteCallback cb, Object ctx) {
+    public void logAddEntry(ByteBuf entry, boolean ackBeforeSync, WriteCallback cb, Object ctx)
+            throws InterruptedException {
         long ledgerId = entry.getLong(entry.readerIndex() + 0);
         long entryId = entry.getLong(entry.readerIndex() + 8);
         logAddEntry(ledgerId, entryId, entry, ackBeforeSync, cb, ctx);
     }
 
     @VisibleForTesting
-    void logAddEntry(long ledgerId, long entryId, ByteBuf entry,
-                     boolean ackBeforeSync, WriteCallback cb, Object ctx) {
+    void logAddEntry(long ledgerId, long entryId, ByteBuf entry, boolean ackBeforeSync, WriteCallback cb, Object ctx)
+            throws InterruptedException {
         //Retain entry until it gets written to journal
         entry.retain();
 
         journalQueueSize.inc();
-        queue.add(QueueEntry.create(
+        queue.put(QueueEntry.create(
                 entry, ackBeforeSync,  ledgerId, entryId, cb, ctx, MathUtils.nowInNano(),
                 journalAddEntryStats, journalQueueSize));
     }
