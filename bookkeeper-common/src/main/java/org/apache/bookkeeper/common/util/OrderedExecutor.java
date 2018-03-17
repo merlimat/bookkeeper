@@ -186,6 +186,7 @@ public class OrderedExecutor implements ExecutorService {
     }
 
     protected ThreadPoolExecutor createSingleThreadExecutor(ThreadFactory factory) {
+//        return new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS, new BlockingMpscQueue<>(10000), factory);
         return new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>(), factory);
     }
 
