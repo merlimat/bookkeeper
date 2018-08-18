@@ -477,7 +477,7 @@ public class BookKeeper implements org.apache.bookkeeper.client.api.BookKeeper {
 
         // initialize event loop group
         if (null == eventLoopGroup) {
-            this.eventLoopGroup = getDefaultEventLoopGroup();
+            this.eventLoopGroup = getDefaultEventLoopGroup(conf);
             this.ownEventLoopGroup = true;
         } else {
             this.eventLoopGroup = eventLoopGroup;
@@ -1568,9 +1568,9 @@ public class BookKeeper implements org.apache.bookkeeper.client.api.BookKeeper {
     Counter getAddOpUrCounter() {
         return addOpUrCounter;
     }
-    static EventLoopGroup getDefaultEventLoopGroup() {
+    static EventLoopGroup getDefaultEventLoopGroup(ClientConfiguration conf) {
         ThreadFactory threadFactory = new DefaultThreadFactory("bookkeeper-io");
-        final int numThreads = Runtime.getRuntime().availableProcessors() * 2;
+        final int numThreads = conf.getNumIOThreads();
 
         if (SystemUtils.IS_OS_LINUX) {
             try {
