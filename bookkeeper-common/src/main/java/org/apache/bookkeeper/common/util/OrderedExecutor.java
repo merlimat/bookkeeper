@@ -29,6 +29,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Random;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -38,6 +39,7 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.Supplier;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -75,6 +77,7 @@ public class OrderedExecutor implements ExecutorService {
     final boolean traceTaskExecution;
     final long warnTimeMicroSec;
     final int maxTasksInQueue;
+    final Supplier<BlockingQueue<Runnable>> queueFactory;
 
 
     public static Builder newBuilder() {
@@ -92,7 +95,8 @@ public class OrderedExecutor implements ExecutorService {
                 threadFactory = new DefaultThreadFactory("bookkeeper-ordered-safe-executor");
             }
             return new OrderedExecutor(name, numThreads, threadFactory, statsLogger,
-                                           traceTaskExecution, warnTimeMicroSec, maxTasksInQueue);
+                                           traceTaskExecution, warnTimeMicroSec, maxTasksInQueue,
+                                           queueFactory);
         }
     }
 
@@ -107,6 +111,9 @@ public class OrderedExecutor implements ExecutorService {
         protected boolean traceTaskExecution = false;
         protected long warnTimeMicroSec = WARN_TIME_MICRO_SEC_DEFAULT;
         protected int maxTasksInQueue = NO_TASK_LIMIT;
+
+        // By default, use regular JDK LinkedBlockingQueue
+        protected Supplier<BlockingQueue<Runnable>> queueFactory = LinkedBlockingQueue::new;
 
         public AbstractBuilder<T> name(String name) {
             this.name = name;
@@ -143,6 +150,11 @@ public class OrderedExecutor implements ExecutorService {
             return this;
         }
 
+        public AbstractBuilder<T> queueFactory(Supplier<BlockingQueue<Runnable>> queueFactory) {
+            this.queueFactory = queueFactory;
+            return this;
+        }
+
         @SuppressWarnings("unchecked")
         public T build() {
             if (null == threadFactory) {
@@ -155,7 +167,8 @@ public class OrderedExecutor implements ExecutorService {
                 statsLogger,
                 traceTaskExecution,
                 warnTimeMicroSec,
-                maxTasksInQueue);
+                maxTasksInQueue,
+                queueFactory);
         }
     }
 
@@ -186,8 +199,7 @@ public class OrderedExecutor implements ExecutorService {
     }
 
     protected ThreadPoolExecutor createSingleThreadExecutor(ThreadFactory factory) {
-//        return new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS, new BlockingMpscQueue<>(10000), factory);
-        return new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>(), factory);
+        return new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS, queueFactory.get(), factory);
     }
 
     protected ExecutorService getBoundedExecutor(ThreadPoolExecutor executor) {
@@ -214,12 +226,14 @@ public class OrderedExecutor implements ExecutorService {
      */
     protected OrderedExecutor(String baseName, int numThreads, ThreadFactory threadFactory,
                                 StatsLogger statsLogger, boolean traceTaskExecution,
-                                long warnTimeMicroSec, int maxTasksInQueue) {
+                                long warnTimeMicroSec, int maxTasksInQueue,
+                                Supplier<BlockingQueue<Runnable>> queueFactory) {
         checkArgument(numThreads > 0);
         checkArgument(!StringUtils.isBlank(baseName));
 
         this.maxTasksInQueue = maxTasksInQueue;
         this.warnTimeMicroSec = warnTimeMicroSec;
+        this.queueFactory = queueFactory;
         name = baseName;
         threads = new ExecutorService[numThreads];
         threadIds = new long[numThreads];

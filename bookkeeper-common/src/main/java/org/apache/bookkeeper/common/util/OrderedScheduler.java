@@ -22,6 +22,7 @@ import com.google.common.util.concurrent.ListeningScheduledExecutorService;
 
 import io.netty.util.concurrent.DefaultThreadFactory;
 
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -29,6 +30,7 @@ import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 
 import org.apache.bookkeeper.stats.StatsLogger;
 
@@ -73,7 +75,8 @@ public class OrderedScheduler extends OrderedExecutor implements ScheduledExecut
                 statsLogger,
                 traceTaskExecution,
                 warnTimeMicroSec,
-                maxTasksInQueue);
+                maxTasksInQueue,
+                queueFactory);
         }
     }
 
@@ -99,8 +102,10 @@ public class OrderedScheduler extends OrderedExecutor implements ScheduledExecut
                                StatsLogger statsLogger,
                                boolean traceTaskExecution,
                                long warnTimeMicroSec,
-                               int maxTasksInQueue) {
-        super(baseName, numThreads, threadFactory, statsLogger, traceTaskExecution, warnTimeMicroSec, maxTasksInQueue);
+                               int maxTasksInQueue,
+                               Supplier<BlockingQueue<Runnable>> queueFactory) {
+        super(baseName, numThreads, threadFactory, statsLogger, traceTaskExecution, warnTimeMicroSec, maxTasksInQueue,
+                queueFactory);
     }
 
 
