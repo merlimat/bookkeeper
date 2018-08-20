@@ -100,6 +100,8 @@ public class ClientConfiguration extends AbstractConfiguration<ClientConfigurati
     protected static final String USE_V2_WIRE_PROTOCOL = "useV2WireProtocol";
     protected static final String NETTY_USE_POOLED_BUFFERS = "nettyUsePooledBuffers";
 
+    protected static final String ENABLE_LOW_LATENCY_SETTINGS = "enableLowLatencySettings";
+
     // Read Parameters
     protected static final String READ_TIMEOUT = "readTimeout";
     protected static final String SPECULATIVE_READ_TIMEOUT = "speculativeReadTimeout";
@@ -1712,6 +1714,45 @@ public class ClientConfiguration extends AbstractConfiguration<ClientConfigurati
      */
     public ClientConfiguration setNettyUsePooledBuffers(boolean enabled) {
         setProperty(NETTY_USE_POOLED_BUFFERS, enabled);
+        return this;
+    }
+
+    /**
+     * Option to enable low latency settings.
+     *
+     * <p>
+     * Default is false.
+     * </p>
+     *
+     * @return the value of the option
+     */
+    public boolean isLowLatencySettings() {
+        return getBoolean(ENABLE_LOW_LATENCY_SETTINGS, false);
+    }
+
+    /**
+     * Option to enable low latency settings.
+     *
+     * <p>
+     * Default is false.
+     * </p>
+     *
+     * <p>
+     * WARNING: This option will enable spin-waiting on executor threads in order to
+     * reduce latency during context switches. The spinning will consume 100% CPU
+     * even when bookie is not doing any work. It is recommended to reduce the
+     * number of threads in the main workers pool
+     * ({@link #setNumWorkerThreads(int)}) to only have few CPU cores busy.
+     * </p>
+     *
+     * @param enabled
+     *            if enabled, use spin-waiting strategy to reduce latency in context
+     *            switches
+     *
+     * @see #isLowLatencySettings()
+     */
+    public ClientConfiguration setLowLatencySettingsEnabled(boolean enabled) {
+        setProperty(ENABLE_LOW_LATENCY_SETTINGS, enabled);
         return this;
     }
 

@@ -24,6 +24,9 @@ import java.lang.invoke.MethodType;
 
 import lombok.experimental.UtilityClass;
 
+/**
+ * Utility class to use "Thread.onSpinWait()" when available.
+ */
 @UtilityClass
 public class BusyWait {
 

@@ -26,11 +26,13 @@ import static org.apache.bookkeeper.bookie.BookKeeperServerStats.WATCHER_SCOPE;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Optional;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
+
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.epoll.EpollEventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.util.HashedWheelTimer;
 import io.netty.util.concurrent.DefaultThreadFactory;
+
 import java.io.IOException;
 import java.net.URI;
 import java.util.EnumSet;
@@ -43,6 +45,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+
 import org.apache.bookkeeper.client.AsyncCallback.CreateCallback;
 import org.apache.bookkeeper.client.AsyncCallback.DeleteCallback;
 import org.apache.bookkeeper.client.AsyncCallback.IsClosedCallback;
@@ -57,6 +60,7 @@ import org.apache.bookkeeper.client.api.CreateBuilder;
 import org.apache.bookkeeper.client.api.DeleteBuilder;
 import org.apache.bookkeeper.client.api.OpenBuilder;
 import org.apache.bookkeeper.client.api.WriteFlag;
+import org.apache.bookkeeper.common.collections.BlockingMpscQueue;
 import org.apache.bookkeeper.common.util.OrderedExecutor;
 import org.apache.bookkeeper.common.util.OrderedScheduler;
 import org.apache.bookkeeper.conf.AbstractConfiguration;
@@ -423,13 +427,18 @@ public class BookKeeper implements org.apache.bookkeeper.client.api.BookKeeper {
 
         // initialize resources
         this.scheduler = OrderedScheduler.newSchedulerBuilder().numThreads(1).name("BookKeeperClientScheduler").build();
-        this.mainWorkerPool = OrderedExecutor.newBuilder()
+        OrderedExecutor.AbstractBuilder<OrderedExecutor> builder = OrderedExecutor.newBuilder()
                 .name("BookKeeperClientWorker")
                 .numThreads(conf.getNumWorkerThreads())
                 .statsLogger(statsLogger)
                 .traceTaskExecution(conf.getEnableTaskExecutionStats())
-                .traceTaskWarnTimeMicroSec(conf.getTaskExecutionWarnTimeMicros())
-                .build();
+                .traceTaskWarnTimeMicroSec(conf.getTaskExecutionWarnTimeMicros());
+
+        if (conf.isLowLatencySettings()) {
+            builder.queueFactory(() -> new BlockingMpscQueue<>(10000));
+        }
+
+        this.mainWorkerPool = builder.build();
 
         // initialize stats logger
         this.statsLogger = statsLogger.scope(BookKeeperClientStats.CLIENT_SCOPE);
@@ -1389,6 +1398,7 @@ public class BookKeeper implements org.apache.bookkeeper.client.api.BookKeeper {
      */
     public void asyncIsClosed(long lId, final IsClosedCallback cb, final Object ctx){
         ledgerManager.readLedgerMetadata(lId, new GenericCallback<LedgerMetadata>(){
+            @Override
             public void operationComplete(int rc, LedgerMetadata lm){
                 if (rc == BKException.Code.OK) {
                     cb.isClosedComplete(rc, lm.isClosed(), ctx);
@@ -1418,6 +1428,7 @@ public class BookKeeper implements org.apache.bookkeeper.client.api.BookKeeper {
         final Result result = new Result();
 
         final IsClosedCallback cb = new IsClosedCallback(){
+            @Override
             public void isClosedComplete(int rc, boolean isClosed, Object ctx){
                     result.isClosed = isClosed;
                     result.rc = rc;
