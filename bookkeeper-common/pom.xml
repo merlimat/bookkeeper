@@ -60,6 +60,12 @@
       <artifactId>jctools-core</artifactId>
     </dependency>
     <dependency>
+      <groupId>com.conversantmedia</groupId>
+      <artifactId>disruptor</artifactId>
+      <version>1.2.15</version>
+      <classifier>jdk8</classifier>
+    </dependency>
+    <dependency>
       <groupId>com.google.code.findbugs</groupId>
       <artifactId>jsr305</artifactId>
       <scope>provided</scope>

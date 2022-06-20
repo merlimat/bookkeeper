@@ -63,6 +63,7 @@ import org.apache.bookkeeper.stats.StatsLogger;
 import org.apache.bookkeeper.stats.ThreadRegistry;
 import org.apache.bookkeeper.util.IOUtils;
 import org.apache.bookkeeper.util.MathUtils;
+import org.jctools.queues.MpscBlockingConsumerArrayQueue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -705,8 +706,8 @@ public class Journal extends BookieCriticalThread implements CheckpointSource {
             queue = new BlockingMpscQueue<>(conf.getJournalQueueSize());
             forceWriteRequests = new BlockingMpscQueue<>(conf.getJournalQueueSize());
         } else {
-            queue = new ArrayBlockingQueue<>(conf.getJournalQueueSize());
-            forceWriteRequests = new ArrayBlockingQueue<>(conf.getJournalQueueSize());
+            queue = new MpscBlockingConsumerArrayQueue<>(conf.getJournalQueueSize());
+            forceWriteRequests = new MpscBlockingConsumerArrayQueue<>(conf.getJournalQueueSize());
         }
 
         // Adjust the journal max memory in case there are multiple journals configured.

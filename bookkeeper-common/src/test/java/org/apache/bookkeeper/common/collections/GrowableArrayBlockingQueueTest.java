@@ -42,7 +42,7 @@ public class GrowableArrayBlockingQueueTest {
 
     @Test
     public void simple() throws Exception {
-        BlockingQueue<Integer> queue = new GrowableArrayBlockingQueue<>(4);
+        BlockingQueue<Integer> queue = new GrowableMpScArrayConsumerBlockingQueue<>(4);
 
         assertEquals(null, queue.poll());
 
@@ -101,7 +101,7 @@ public class GrowableArrayBlockingQueueTest {
 
     @Test
     public void blockingTake() throws Exception {
-        BlockingQueue<Integer> queue = new GrowableArrayBlockingQueue<>();
+        BlockingQueue<Integer> queue = new GrowableMpScArrayConsumerBlockingQueue<>();
 
         CountDownLatch latch = new CountDownLatch(1);
 
@@ -139,7 +139,7 @@ public class GrowableArrayBlockingQueueTest {
 
     @Test
     public void growArray() throws Exception {
-        BlockingQueue<Integer> queue = new GrowableArrayBlockingQueue<>(4);
+        BlockingQueue<Integer> queue = new GrowableMpScArrayConsumerBlockingQueue<>(4);
 
         assertEquals(null, queue.poll());
 
@@ -168,7 +168,7 @@ public class GrowableArrayBlockingQueueTest {
 
     @Test
     public void pollTimeout() throws Exception {
-        BlockingQueue<Integer> queue = new GrowableArrayBlockingQueue<>(4);
+        BlockingQueue<Integer> queue = new GrowableMpScArrayConsumerBlockingQueue<>(4);
 
         assertEquals(null, queue.poll(1, TimeUnit.MILLISECONDS));
 
@@ -186,7 +186,7 @@ public class GrowableArrayBlockingQueueTest {
 
     @Test
     public void pollTimeout2() throws Exception {
-        BlockingQueue<Integer> queue = new GrowableArrayBlockingQueue<>();
+        BlockingQueue<Integer> queue = new GrowableMpScArrayConsumerBlockingQueue<>();
 
         CountDownLatch latch = new CountDownLatch(1);
 
