@@ -33,6 +33,7 @@ import static org.mockito.Mockito.when;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.buffer.UnpooledByteBufAllocator;
+import io.netty.util.ReferenceCounted;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -166,10 +167,10 @@ public class ReadLastConfirmedAndEntryOpTest {
         final long lac = 1L;
 
         ByteBuf data = Unpooled.copiedBuffer("test-speculative-responses", UTF_8);
-        ByteBufList dataWithDigest = digestManager.computeDigestAndPackageForSending(
-            entryId, lac, data.readableBytes(), data);
-        byte[] bytesWithDigest = new byte[dataWithDigest.readableBytes()];
-        assertEquals(bytesWithDigest.length, dataWithDigest.getBytes(bytesWithDigest));
+        ReferenceCounted dataWithDigest = digestManager.computeDigestAndPackageForSending(
+            entryId, lac, data.readableBytes(), data, new byte[20], 0);
+//        byte[] bytesWithDigest = new byte[dataWithDigest.readableBytes()];
+//        assertEquals(bytesWithDigest.length, dataWithDigest.getBytes(bytesWithDigest));
 
         final Map<BookieId, ReadLastConfirmedAndEntryHolder> callbacks =
             Collections.synchronizedMap(new HashMap<>());
@@ -239,8 +240,8 @@ public class ReadLastConfirmedAndEntryOpTest {
         ReadLastConfirmedAndEntryHolder secondBookieHolder = secondBookieEntry.getValue();
         ReadLastConfirmedAndEntryContext secondContext = secondBookieHolder.context;
         secondContext.setLastAddConfirmed(entryId);
-        secondBookieHolder.getCallback().readEntryComplete(
-            Code.OK, LEDGERID, entryId, Unpooled.wrappedBuffer(bytesWithDigest), secondContext);
+//        secondBookieHolder.getCallback().readEntryComplete(
+//            Code.OK, LEDGERID, entryId, Unpooled.wrappedBuffer(bytesWithDigest), secondContext);
 
         // the recycled entry shouldn't be updated by any future callbacks.
         assertNull(entry.getEntryBuffer());
