@@ -34,9 +34,8 @@ import org.apache.bookkeeper.http.service.HttpServiceRequest;
 import org.apache.bookkeeper.http.service.HttpServiceResponse;
 import org.apache.bookkeeper.proto.BookieServer;
 import org.apache.commons.collections4.CollectionUtils;
+import lombok.CustomLog;
 import org.apache.commons.lang3.StringUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 
 /**
@@ -52,9 +51,9 @@ import org.slf4j.LoggerFactory;
  *        }
  */
 
+@CustomLog
 public class TriggerLocationCompactService implements HttpEndpointService {
 
-    static final Logger LOG = LoggerFactory.getLogger(TriggerLocationCompactService.class);
 
     private final BookieServer bookieServer;
     private final List<String> entryLocationDBPath;
@@ -115,21 +114,17 @@ public class TriggerLocationCompactService implements HttpEndpointService {
             } catch (JsonUtil.ParseJsonException ex) {
                 output = ex.getMessage();
                 response.setCode(HttpServer.StatusCode.BAD_REQUEST);
-                LOG.warn("Trigger entry location index RocksDB compact failed, caused by: " + ex.getMessage());
+                log.warn().attr("cause", ex.getMessage()).log("Trigger entry location index RocksDB compact failed");
             }
 
             String jsonResponse = JsonUtil.toJson(output);
-            if (LOG.isDebugEnabled()) {
-                LOG.debug("output body:" + jsonResponse);
-            }
+            log.debug().attr("body", jsonResponse).log("output body");
             response.setBody(jsonResponse);
             return response;
         } else if (HttpServer.Method.GET == request.getMethod()) {
             Map<String, Boolean> compactStatus = ledgerStorage.isEntryLocationCompacting(entryLocationDBPath);
             String jsonResponse = JsonUtil.toJson(compactStatus);
-            if (LOG.isDebugEnabled()) {
-                LOG.debug("output body:" + jsonResponse);
-            }
+            log.debug().attr("body", jsonResponse).log("output body");
             response.setBody(jsonResponse);
             response.setCode(HttpServer.StatusCode.OK);
             return response;

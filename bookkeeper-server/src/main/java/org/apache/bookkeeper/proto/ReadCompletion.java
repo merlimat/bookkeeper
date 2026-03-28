@@ -110,9 +110,7 @@ class ReadCompletion extends CompletionValue {
                                     long maxLAC, // max known lac piggy-back from bookies
                                     long lacUpdateTimestamp) { // the timestamp when the lac is updated.
         int readableBytes = buffer.readableBytes();
-        if (LOG.isDebugEnabled()) {
-            logResponse(status, "ledger", ledgerId, "entry", entryId, "entryLength", readableBytes);
-        }
+        logResponse(status, "ledger", ledgerId, "entry", entryId, "entryLength", readableBytes);
 
         int rc = convertStatus(status, BKException.Code.ReadException);
 

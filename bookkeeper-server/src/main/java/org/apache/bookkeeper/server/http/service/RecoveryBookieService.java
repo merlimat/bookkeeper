@@ -32,10 +32,9 @@ import org.apache.bookkeeper.http.HttpServer;
 import org.apache.bookkeeper.http.service.HttpEndpointService;
 import org.apache.bookkeeper.http.service.HttpServiceRequest;
 import org.apache.bookkeeper.http.service.HttpServiceResponse;
+import lombok.CustomLog;
 import org.apache.bookkeeper.net.BookieId;
 import org.apache.bookkeeper.versioning.Versioned;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * HttpEndpointService that handle Bookkeeper recovery related http request.
@@ -47,9 +46,9 @@ import org.slf4j.LoggerFactory;
  *   "delete_cookie": &lt;bool_value&gt;
  * }
  */
+@CustomLog
 public class RecoveryBookieService implements HttpEndpointService {
 
-    static final Logger LOG = LoggerFactory.getLogger(RecoveryBookieService.class);
 
     protected ServerConfiguration conf;
     protected BookKeeperAdmin bka;
@@ -91,12 +90,11 @@ public class RecoveryBookieService implements HttpEndpointService {
 
         try {
             requestJsonBody = JsonUtil.fromJson(requestBody, RecoveryRequestJsonBody.class);
-            if (LOG.isDebugEnabled()) {
-                LOG.debug("bookie_src: [" + requestJsonBody.bookieSrc.get(0)
-                        + "],  delete_cookie: [" + requestJsonBody.deleteCookie + "]");
-            }
+            log.debug().attr("bookieSrc", requestJsonBody.bookieSrc.get(0))
+                    .attr("deleteCookie", requestJsonBody.deleteCookie)
+                    .log("recovery request");
         } catch (JsonUtil.ParseJsonException e) {
-            LOG.error("Meet Exception: ", e);
+            log.error().exception(e).log("Failed to parse JSON request");
             response.setCode(HttpServer.StatusCode.NOT_FOUND);
             response.setBody("ERROR parameters: " + e.getMessage());
             return response;
@@ -109,15 +107,15 @@ public class RecoveryBookieService implements HttpEndpointService {
                     try {
                         BookieId bookieSrc = BookieId.parse(bookieSrcSerialized);
                         boolean deleteCookie = requestJsonBody.deleteCookie;
-                        LOG.info("Start recovering bookie.");
+                        log.info("Start recovering bookie");
                         bka.recoverBookieData(bookieSrc);
                         if (deleteCookie) {
                             Versioned<Cookie> cookie = Cookie.readFromRegistrationManager(rm, bookieSrc);
                             cookie.getValue().deleteFromRegistrationManager(rm, bookieSrc, cookie.getVersion());
                         }
-                        LOG.info("Complete recovering bookie");
+                        log.info("Complete recovering bookie");
                     } catch (Exception e) {
-                        LOG.error("Exception occurred while recovering bookie", e);
+                        log.error().exception(e).log("Exception occurred while recovering bookie");
                     }
                 });
                 return null;

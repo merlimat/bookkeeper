@@ -29,11 +29,10 @@ import java.util.Map;
 import java.util.Set;
 import org.apache.bookkeeper.client.api.LedgerMetadata;
 import org.apache.bookkeeper.net.BookieId;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.CustomLog;
 
+@CustomLog
 class EnsembleUtils {
-    private static final Logger LOG = LoggerFactory.getLogger(EnsembleUtils.class);
 
     static List<BookieId> replaceBookiesInEnsemble(BookieWatcher bookieWatcher,
                                                               LedgerMetadata metadata,
@@ -54,15 +53,23 @@ class EnsembleUtils {
         for (Map.Entry<Integer, BookieId> entry : failedBookies.entrySet()) {
             int idx = entry.getKey();
             BookieId addr = entry.getValue();
-            if (LOG.isDebugEnabled()) {
-                LOG.debug("{} replacing bookie: {} index: {}", logContext, addr, idx);
-            }
+
+            log.debug()
+            .attr("logContext", logContext)
+            .attr("bookieAddr", addr)
+            .attr("idx", idx)
+            .log("replacing bookie: index:");
+
 
             if (!newEnsemble.get(idx).equals(addr)) {
-                if (LOG.isDebugEnabled()) {
-                    LOG.debug("{} Not changing failed bookie {} at index {}, already changed to {}",
-                              logContext, addr, idx, newEnsemble.get(idx));
-                }
+
+                log.debug()
+                .attr("logContext", logContext)
+                .attr("bookieAddr", addr)
+                .attr("idx", idx)
+                .attr("get", newEnsemble.get(idx))
+                .log("Not changing failed bookie at index , already changed to");
+
                 continue;
             }
             try {

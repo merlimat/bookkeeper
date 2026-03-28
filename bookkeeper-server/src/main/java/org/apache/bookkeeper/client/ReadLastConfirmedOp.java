@@ -27,15 +27,14 @@ import org.apache.bookkeeper.proto.BookieProtocol;
 import org.apache.bookkeeper.proto.BookkeeperInternalCallbacks.ReadEntryCallback;
 import org.apache.bookkeeper.proto.checksum.DigestManager;
 import org.apache.bookkeeper.proto.checksum.DigestManager.RecoveryData;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.CustomLog;
 
 /**
  * This class encapsulated the read last confirmed operation.
  *
  */
+@CustomLog
 class ReadLastConfirmedOp implements ReadEntryCallback {
-    static final Logger LOG = LoggerFactory.getLogger(ReadLastConfirmedOp.class);
     private final long ledgerId;
     private final byte[] ledgerKey;
     private final BookieClient bookieClient;
@@ -113,9 +112,11 @@ class ReadLastConfirmedOp implements ReadEntryCallback {
             } catch (BKDigestMatchException e) {
                 // Too bad, this bookie didn't give us a valid answer, we
                 // still might be able to recover though so continue
-                LOG.error("Mac mismatch for ledger: " + ledgerId + ", entry: " + entryId
-                          + " while reading last entry from bookie: "
-                          + currentEnsemble.get(bookieIndex));
+                log.error()
+                        .attr("ledgerId", ledgerId)
+                        .attr("entryId", entryId)
+                        .attr("bookieAddr", currentEnsemble.get(bookieIndex))
+                        .log("Mac mismatch while reading last entry from bookie");
             }
         }
 
@@ -138,18 +139,22 @@ class ReadLastConfirmedOp implements ReadEntryCallback {
             && coverageSet.checkCovered()
             && !completed) {
             completed = true;
-            if (LOG.isDebugEnabled()) {
-                LOG.debug("Read Complete with enough validResponses for ledger: {}, entry: {}",
-                        ledgerId, entryId);
-            }
+
+            log.debug()
+            .attr("ledgerId", ledgerId)
+            .attr("entryId", entryId)
+            .log("Read Complete with enough validResponses for ledger: , entry:");
+
 
             cb.readLastConfirmedDataComplete(BKException.Code.OK, maxRecoveredData);
             return;
         }
 
         if (numResponsesPending == 0 && !completed) {
-            LOG.error("While readLastConfirmed ledger: {} did not hear success responses from all quorums, {}",
-                      ledgerId, coverageSet);
+            log.error()
+                    .attr("ledgerId", ledgerId)
+                    .attr("coverageSet", coverageSet)
+                    .log("While readLastConfirmed ledger: did not hear success responses from all quorums");
             cb.readLastConfirmedDataComplete(lastSeenError, maxRecoveredData);
         }
 

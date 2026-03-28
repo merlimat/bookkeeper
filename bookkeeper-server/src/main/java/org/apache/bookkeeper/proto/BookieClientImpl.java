@@ -70,15 +70,14 @@ import org.apache.bookkeeper.tls.SecurityException;
 import org.apache.bookkeeper.tls.SecurityHandlerFactory;
 import org.apache.bookkeeper.util.AvailabilityOfEntriesOfLedger;
 import org.apache.bookkeeper.util.ByteBufList;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.CustomLog;
 
 /**
  * Implements the client-side part of the BookKeeper protocol.
  *
  */
+@CustomLog
 public class BookieClientImpl implements BookieClient, PerChannelBookieClientFactory {
-    static final Logger LOG = LoggerFactory.getLogger(BookieClientImpl.class);
 
     private final OrderedExecutor executor;
     private final ScheduledExecutorService scheduler;
@@ -217,7 +216,7 @@ public class BookieClientImpl implements BookieClient, PerChannelBookieClientFac
                     newClientPool.close(false);
                 }
             } catch (SecurityException e) {
-                LOG.error("Security Exception in creating new default PCBC pool: ", e);
+                log.error().exception(e).log("Security Exception in creating new default PCBC pool");
                 return null;
             } finally {
                 closeLock.readLock().unlock();

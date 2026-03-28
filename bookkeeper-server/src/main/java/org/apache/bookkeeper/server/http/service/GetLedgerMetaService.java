@@ -31,17 +31,16 @@ import org.apache.bookkeeper.http.service.HttpServiceRequest;
 import org.apache.bookkeeper.http.service.HttpServiceResponse;
 import org.apache.bookkeeper.meta.LedgerManager;
 import org.apache.bookkeeper.meta.LedgerManagerFactory;
+import lombok.CustomLog;
 import org.apache.bookkeeper.meta.LedgerMetadataSerDe;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * HttpEndpointService that handle Bookkeeper get ledger metadata related http request.
  * The GET method will get the ledger metadata for given "ledger_id".
  */
+@CustomLog
 public class GetLedgerMetaService implements HttpEndpointService {
 
-    static final Logger LOG = LoggerFactory.getLogger(GetLedgerMetaService.class);
 
     protected ServerConfiguration conf;
     private final LedgerManagerFactory ledgerManagerFactory;
@@ -72,9 +71,7 @@ public class GetLedgerMetaService implements HttpEndpointService {
             manager.close();
 
             String jsonResponse = JsonUtil.toJson(output);
-            if (LOG.isDebugEnabled()) {
-                LOG.debug("output body:" + jsonResponse);
-            }
+            log.debug().attr("body", jsonResponse).log("output body");
             response.setBody(jsonResponse);
             response.setCode(HttpServer.StatusCode.OK);
             return response;

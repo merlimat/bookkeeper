@@ -85,15 +85,15 @@ import org.apache.bookkeeper.stats.Gauge;
 import org.apache.bookkeeper.stats.OpStatsLogger;
 import org.apache.bookkeeper.versioning.Versioned;
 import org.apache.commons.collections4.IteratorUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import io.github.merlimat.slog.Logger;
 
 /**
  * Ledger handle contains ledger metadata and is used to access the read and
  * write operations to a ledger.
  */
 public class LedgerHandle implements WriteHandle {
-    static final Logger LOG = LoggerFactory.getLogger(LedgerHandle.class);
+
+    protected final Logger log;
 
     private static final int STICKY_READ_BOOKIE_INDEX_UNSET = -1;
 
@@ -180,6 +180,7 @@ public class LedgerHandle implements WriteHandle {
                  BookKeeper.DigestType digestType, byte[] password,
                  EnumSet<WriteFlag> writeFlags)
             throws GeneralSecurityException, NumberFormatException {
+        this.log = Logger.get(LedgerHandle.class).with().attr("ledgerId", ledgerId).build();
         this.clientCtx = clientCtx;
 
         this.versionedMetadata = versionedMetadata;
@@ -516,9 +517,12 @@ public class LedgerHandle implements WriteHandle {
         try {
             doAsyncCloseInternal(cb, ctx, rc);
         } catch (RejectedExecutionException re) {
-            if (LOG.isDebugEnabled()) {
-                LOG.debug("Failed to close ledger {} : ", ledgerId, re);
-            }
+
+            log.debug()
+                    .exception(re)
+                    .attr("ledgerId", ledgerId)
+                    .log("Failed to close ledger :");
+
             errorOutPendingAdds(BookKeeper.getReturnRc(clientCtx.getBookieClient(), rc));
             cb.closeComplete(BookKeeper.getReturnRc(clientCtx.getBookieClient(), BKException.Code.InterruptedException),
                              this, ctx);
@@ -573,10 +577,13 @@ public class LedgerHandle implements WriteHandle {
                     }
 
                     if (prevHandleState != HandleState.CLOSED) {
-                        if (LOG.isDebugEnabled()) {
-                            LOG.debug("Closing ledger: {} at entryId {} with {} bytes", getId(), lastEntry,
-                                    finalLength);
-                        }
+
+                        log.debug()
+                        .attr("id", getId())
+                        .attr("lastEntry", lastEntry)
+                        .attr("finalLength", finalLength)
+                        .log("Closing ledger: at entryId with bytes");
+
 
                         tearDownWriteHandleState();
                         new MetadataUpdateLoop(
@@ -591,14 +598,18 @@ public class LedgerHandle implements WriteHandle {
                                                 && finalLength == metadata.getLength()) {
                                             return false;
                                         } else {
-                                            LOG.error("Metadata conflict when closing ledger {}."
-                                                            + " Another client may have recovered the ledger while "
-                                                            + "there"
-                                                            + " were writes outstanding. (local lastEntry:{} "
-                                                            + "length:{}) "
-                                                            + " (metadata lastEntry:{} length:{})",
-                                                    getId(), lastEntry, finalLength,
-                                                    metadata.getLastEntryId(), metadata.getLength());
+                                            log.error()
+                                                    .attr("id", getId())
+                                                    .attr("lastEntry", lastEntry)
+                                                    .attr("finalLength", finalLength)
+                                                    .attr("entryId", metadata.getLastEntryId())
+                                                    .attr("getLength", metadata.getLength())
+                                                    .log("Metadata conflict when closing ledger ."
+ + " Another client may have recovered the ledger while "
+ + "there"
+ + " were writes outstanding. (local lastEntry: "
+ + "length:) "
+ + " (metadata lastEntry: length:)");
                                             throw new BKException.BKMetadataVersionException();
                                         }
                                     } else {
@@ -721,15 +732,22 @@ public class LedgerHandle implements WriteHandle {
     public void asyncReadEntries(long firstEntry, long lastEntry, ReadCallback cb, Object ctx) {
         // Little sanity check
         if (firstEntry < 0 || firstEntry > lastEntry) {
-            LOG.error("IncorrectParameterException on ledgerId:{} firstEntry:{} lastEntry:{}",
-                    ledgerId, firstEntry, lastEntry);
+            log.error()
+                    .attr("ledgerId", ledgerId)
+                    .attr("firstEntry", firstEntry)
+                    .attr("lastEntry", lastEntry)
+                    .log("IncorrectParameterException on ledgerId: firstEntry: lastEntry:");
             cb.readComplete(BKException.Code.IncorrectParameterException, this, null, ctx);
             return;
         }
 
         if (lastEntry > lastAddConfirmed) {
-            LOG.error("ReadEntries exception on ledgerId:{} firstEntry:{} lastEntry:{} lastAddConfirmed:{}",
-                    ledgerId, firstEntry, lastEntry, lastAddConfirmed);
+            log.error()
+                    .attr("ledgerId", ledgerId)
+                    .attr("firstEntry", firstEntry)
+                    .attr("lastEntry", lastEntry)
+                    .attr("lastAddConfirmed", lastAddConfirmed)
+                    .log("ReadEntries exception on ledgerId: firstEntry: lastEntry: lastAddConfirmed:");
             cb.readComplete(BKException.Code.ReadException, this, null, ctx);
             return;
         }
@@ -755,8 +773,11 @@ public class LedgerHandle implements WriteHandle {
     public void asyncBatchReadEntries(long startEntry, int maxCount, long maxSize, ReadCallback cb, Object ctx) {
         // Little sanity check
         if (startEntry < 0 || startEntry > lastAddConfirmed) {
-            LOG.error("IncorrectParameterException on ledgerId:{} startEntry:{} lastAddConfirmed:{}",
-                    ledgerId, startEntry, lastAddConfirmed);
+            log.error()
+                    .attr("ledgerId", ledgerId)
+                    .attr("startEntry", startEntry)
+                    .attr("lastAddConfirmed", lastAddConfirmed)
+                    .log("IncorrectParameterException on ledgerId: startEntry: lastAddConfirmed:");
             cb.readComplete(BKException.Code.IncorrectParameterException, this, null, ctx);
             return;
         }
@@ -811,8 +832,11 @@ public class LedgerHandle implements WriteHandle {
     public void asyncReadUnconfirmedEntries(long firstEntry, long lastEntry, ReadCallback cb, Object ctx) {
         // Little sanity check
         if (firstEntry < 0 || firstEntry > lastEntry) {
-            LOG.error("IncorrectParameterException on ledgerId:{} firstEntry:{} lastEntry:{}",
-                    ledgerId, firstEntry, lastEntry);
+            log.error()
+                    .attr("ledgerId", ledgerId)
+                    .attr("firstEntry", firstEntry)
+                    .attr("lastEntry", lastEntry)
+                    .log("IncorrectParameterException on ledgerId: firstEntry: lastEntry:");
             cb.readComplete(BKException.Code.IncorrectParameterException, this, null, ctx);
             return;
         }
@@ -838,7 +862,10 @@ public class LedgerHandle implements WriteHandle {
             Object ctx) {
         // Little sanity check
         if (startEntry < 0) {
-            LOG.error("IncorrectParameterException on ledgerId:{} firstEntry:{}", ledgerId, startEntry);
+            log.error()
+                    .attr("ledgerId", ledgerId)
+                    .attr("startEntry", startEntry)
+                    .log("IncorrectParameterException on ledgerId: firstEntry:");
             cb.readComplete(BKException.Code.IncorrectParameterException, this, null, ctx);
         }
         if (notSupportBatchRead()) {
@@ -874,14 +901,21 @@ public class LedgerHandle implements WriteHandle {
     public CompletableFuture<LedgerEntries> readAsync(long firstEntry, long lastEntry) {
         // Little sanity check
         if (firstEntry < 0 || firstEntry > lastEntry) {
-            LOG.error("IncorrectParameterException on ledgerId:{} firstEntry:{} lastEntry:{}",
-                    ledgerId, firstEntry, lastEntry);
+            log.error()
+                    .attr("ledgerId", ledgerId)
+                    .attr("firstEntry", firstEntry)
+                    .attr("lastEntry", lastEntry)
+                    .log("IncorrectParameterException on ledgerId: firstEntry: lastEntry:");
             return FutureUtils.exception(new BKIncorrectParameterException());
         }
 
         if (lastEntry > lastAddConfirmed) {
-            LOG.error("ReadAsync exception on ledgerId:{} firstEntry:{} lastEntry:{} lastAddConfirmed:{}",
-                    ledgerId, firstEntry, lastEntry, lastAddConfirmed);
+            log.error()
+                    .attr("ledgerId", ledgerId)
+                    .attr("firstEntry", firstEntry)
+                    .attr("lastEntry", lastEntry)
+                    .attr("lastAddConfirmed", lastAddConfirmed)
+                    .log("ReadAsync exception on ledgerId: firstEntry: lastEntry: lastAddConfirmed:");
             return FutureUtils.exception(new BKReadException());
         }
 
@@ -903,12 +937,18 @@ public class LedgerHandle implements WriteHandle {
     public CompletableFuture<LedgerEntries> batchReadAsync(long startEntry, int maxCount, long maxSize) {
         // Little sanity check
         if (startEntry < 0) {
-            LOG.error("IncorrectParameterException on ledgerId:{} firstEntry:{}", ledgerId, startEntry);
+            log.error()
+                    .attr("ledgerId", ledgerId)
+                    .attr("startEntry", startEntry)
+                    .log("IncorrectParameterException on ledgerId: firstEntry:");
             return FutureUtils.exception(new BKIncorrectParameterException());
         }
         if (startEntry > lastAddConfirmed) {
-            LOG.error("ReadAsync exception on ledgerId:{} firstEntry:{} lastAddConfirmed:{}",
-                    ledgerId, startEntry, lastAddConfirmed);
+            log.error()
+                    .attr("ledgerId", ledgerId)
+                    .attr("startEntry", startEntry)
+                    .attr("lastAddConfirmed", lastAddConfirmed)
+                    .log("ReadAsync exception on ledgerId: firstEntry: lastAddConfirmed:");
             return FutureUtils.exception(new BKReadException());
         }
         if (notSupportBatchRead()) {
@@ -956,17 +996,20 @@ public class LedgerHandle implements WriteHandle {
             boolean isRecoveryRead) {
         int nettyMaxFrameSizeBytes = clientCtx.getConf().nettyMaxFrameSizeBytes;
         if (maxSize > nettyMaxFrameSizeBytes) {
-            if (LOG.isDebugEnabled()) {
-                LOG.debug("The max size is greater than nettyMaxFrameSizeBytes, "
-                        + "use nettyMaxFrameSizeBytes:{} to replace it.", nettyMaxFrameSizeBytes);
-            }
+
+            log.debug()
+            .attr("nettyMaxFrameSizeBytes", nettyMaxFrameSizeBytes)
+            .log("The max size is greater than nettyMaxFrameSizeBytes, "
+ + "use nettyMaxFrameSizeBytes: to replace it.");
+
             maxSize = nettyMaxFrameSizeBytes;
         }
         if (maxSize <= 0) {
-            if (LOG.isDebugEnabled()) {
-                LOG.debug("The max size is negative, use nettyMaxFrameSizeBytes:{} to replace it.",
-                        nettyMaxFrameSizeBytes);
-            }
+
+            log.debug()
+            .attr("nettyMaxFrameSizeBytes", nettyMaxFrameSizeBytes)
+            .log("The max size is negative, use nettyMaxFrameSizeBytes: to replace it.");
+
             maxSize = nettyMaxFrameSizeBytes;
         }
         BatchedReadOp op = new BatchedReadOp(this, clientCtx,
@@ -1036,8 +1079,11 @@ public class LedgerHandle implements WriteHandle {
     public CompletableFuture<LedgerEntries> readUnconfirmedAsync(long firstEntry, long lastEntry) {
         // Little sanity check
         if (firstEntry < 0 || firstEntry > lastEntry) {
-            LOG.error("IncorrectParameterException on ledgerId:{} firstEntry:{} lastEntry:{}",
-                    ledgerId, firstEntry, lastEntry);
+            log.error()
+                    .attr("ledgerId", ledgerId)
+                    .attr("firstEntry", firstEntry)
+                    .attr("lastEntry", lastEntry)
+                    .log("IncorrectParameterException on ledgerId: firstEntry: lastEntry:");
             return FutureUtils.exception(new BKIncorrectParameterException());
         }
 
@@ -1223,7 +1269,7 @@ public class LedgerHandle implements WriteHandle {
      * @return the entryId of the new inserted entry
      */
     public long addEntry(final long entryId, byte[] data) throws InterruptedException, BKException {
-        LOG.error("To use this feature Ledger must be created with createLedgerAdv interface.");
+        log.error("To use this feature Ledger must be created with createLedgerAdv interface.");
         throw BKException.create(BKException.Code.IllegalOpException);
     }
 
@@ -1241,9 +1287,9 @@ public class LedgerHandle implements WriteHandle {
      */
     public long addEntry(byte[] data, int offset, int length)
             throws InterruptedException, BKException {
-        if (LOG.isDebugEnabled()) {
-            LOG.debug("Adding entry {}", data);
-        }
+
+        log.debug().attr("data", data).log("Adding entry");
+
 
         SyncAddCallback callback = new SyncAddCallback();
         asyncAddEntry(data, offset, length, callback, null);
@@ -1269,7 +1315,7 @@ public class LedgerHandle implements WriteHandle {
      */
     public long addEntry(final long entryId, byte[] data, int offset, int length) throws InterruptedException,
             BKException {
-        LOG.error("To use this feature Ledger must be created with createLedgerAdv() interface.");
+        log.error("To use this feature Ledger must be created with createLedgerAdv() interface.");
         throw BKException.create(BKException.Code.IllegalOpException);
     }
 
@@ -1305,7 +1351,7 @@ public class LedgerHandle implements WriteHandle {
      *            some control object
      */
     public void asyncAddEntry(final long entryId, final byte[] data, final AddCallback cb, final Object ctx) {
-        LOG.error("To use this feature Ledger must be created with createLedgerAdv() interface.");
+        log.error("To use this feature Ledger must be created with createLedgerAdv() interface.");
         cb.addCompleteWithLatency(BKException.Code.IllegalOpException, LedgerHandle.this, entryId, 0, ctx);
     }
 
@@ -1367,7 +1413,7 @@ public class LedgerHandle implements WriteHandle {
      */
     public void asyncAddEntry(final long entryId, final byte[] data, final int offset, final int length,
             final AddCallback cb, final Object ctx) {
-        LOG.error("To use this feature Ledger must be created with createLedgerAdv() interface.");
+        log.error("To use this feature Ledger must be created with createLedgerAdv() interface.");
         cb.addCompleteWithLatency(BKException.Code.IllegalOpException, LedgerHandle.this, entryId, 0, ctx);
     }
 
@@ -1393,7 +1439,7 @@ public class LedgerHandle implements WriteHandle {
      */
     public void asyncAddEntry(final long entryId, final byte[] data, final int offset, final int length,
                               final AddCallbackWithLatency cb, final Object ctx) {
-        LOG.error("To use this feature Ledger must be created with createLedgerAdv() interface.");
+        log.error("To use this feature Ledger must be created with createLedgerAdv() interface.");
         cb.addCompleteWithLatency(BKException.Code.IllegalOpException, LedgerHandle.this, entryId, 0, ctx);
     }
 
@@ -1414,7 +1460,7 @@ public class LedgerHandle implements WriteHandle {
      */
     public void asyncAddEntry(final long entryId, ByteBuf data,
                               final AddCallbackWithLatency cb, final Object ctx) {
-        LOG.error("To use this feature Ledger must be created with createLedgerAdv() interface.");
+        log.error("To use this feature Ledger must be created with createLedgerAdv() interface.");
         cb.addCompleteWithLatency(BKException.Code.IllegalOpException, LedgerHandle.this, entryId, 0, ctx);
     }
 
@@ -1441,7 +1487,7 @@ public class LedgerHandle implements WriteHandle {
                 executeOrdered(new Runnable() {
                     @Override
                     public void run() {
-                        LOG.warn("Force() attempted on a closed ledger: {}", ledgerId);
+                        log.warn().attr("ledgerId", ledgerId).log("Force() attempted on a closed ledger:");
                         result.completeExceptionally(new BKException.BKLedgerClosedException());
                     }
 
@@ -1566,10 +1612,11 @@ public class LedgerHandle implements WriteHandle {
                 }
             }
             if (backoff > 1) {
-                LOG.info("Spent {} ms waiting for {} writable channels, writable result {}",
-                        MathUtils.elapsedMSec(startTime),
-                        writeSet.size() - allowedNonWritableCount,
-                        writableResult);
+                log.info()
+                        .attr("elapsedMSec", MathUtils.elapsedMSec(startTime))
+                        .attr("size - allowedNonWritableCount", writeSet.size() - allowedNonWritableCount)
+                        .attr("writableResult", writableResult)
+                        .log("Spent ms waiting for writable channels, writable result");
             }
         }
 
@@ -1610,7 +1657,7 @@ public class LedgerHandle implements WriteHandle {
                 executeOrdered(new Runnable() {
                     @Override
                     public void run() {
-                        LOG.warn("Attempt to add to closed ledger: {}", ledgerId);
+                        log.warn().attr("ledgerId", ledgerId).log("Attempt to add to closed ledger:");
                         op.cb.addCompleteWithLatency(BKException.Code.LedgerClosedException,
                                 LedgerHandle.this, INVALID_ENTRY_ID, 0, op.ctx);
                         op.recyclePendAddOpObject();
@@ -2053,7 +2100,10 @@ public class LedgerHandle implements WriteHandle {
             errorOutPendingAdds(rc);
             return;
         }
-        LOG.error("Closing ledger {} due to {}", ledgerId, BKException.codeLogger(rc));
+        log.error()
+                .attr("ledgerId", ledgerId)
+                .attr("codeLogger", BKException.codeLogger(rc))
+                .log("Closing ledger due to");
         asyncCloseInternal(NoopCloseCallback.instance, null, rc);
     }
 
@@ -2065,7 +2115,7 @@ public class LedgerHandle implements WriteHandle {
             }
         }
         if (timedOut > 0) {
-            LOG.info("Timed out {} add ops", timedOut);
+            log.info().attr("timedOut", timedOut).log("Timed out add ops");
         }
     }
 
@@ -2097,17 +2147,19 @@ public class LedgerHandle implements WriteHandle {
         while ((pendingAddOp = pendingAddOps.peek()) != null
                && !changingEnsemble) {
             if (!pendingAddOp.completed) {
-                if (LOG.isDebugEnabled()) {
-                    LOG.debug("pending add not completed: {}", pendingAddOp);
-                }
+
+                log.debug().attr("pendingAddOp", pendingAddOp).log("pending add not completed:");
+
                 return;
             }
             // Check if it is the next entry in the sequence.
             if (pendingAddOp.entryId != 0 && pendingAddOp.entryId != pendingAddsSequenceHead + 1) {
-                if (LOG.isDebugEnabled()) {
-                    LOG.debug("Head of the queue entryId: {} is not the expected value: {}", pendingAddOp.entryId,
-                               pendingAddsSequenceHead + 1);
-                }
+
+                log.debug()
+                .attr("entryId", pendingAddOp.entryId)
+                .attr("value", pendingAddsSequenceHead + 1)
+                .log("Head of the queue entryId: is not the expected value:");
+
                 return;
             }
 
@@ -2157,21 +2209,26 @@ public class LedgerHandle implements WriteHandle {
 
     void handleBookieFailure(final Map<Integer, BookieId> failedBookies) {
         if (clientCtx.getConf().disableEnsembleChangeFeature.isAvailable()) {
-            if (LOG.isDebugEnabled()) {
-                LOG.debug("Ensemble change is disabled. Retry sending to failed bookies {} for ledger {}.",
-                    failedBookies, ledgerId);
-            }
+
+            log.debug()
+            .attr("failedBookies", failedBookies)
+            .attr("ledgerId", ledgerId)
+            .log("Ensemble change is disabled. Retry sending to failed bookies for ledger .");
+
             executeOrdered(() ->
                     unsetSuccessAndSendWriteRequest(getCurrentEnsemble(), failedBookies.keySet()));
             return;
         }
 
         if (writeFlags.contains(WriteFlag.DEFERRED_SYNC)) {
-            if (LOG.isDebugEnabled()) {
-                LOG.debug("Cannot perform ensemble change with write flags {}. "
-                        + "Failed bookies {} for ledger {}.",
-                    writeFlags, failedBookies, ledgerId);
-            }
+
+            log.debug()
+            .attr("writeFlags", writeFlags)
+            .attr("failedBookies", failedBookies)
+            .attr("ledgerId", ledgerId)
+            .log("Cannot perform ensemble change with write flags . "
+ + "Failed bookies for ledger .");
+
             handleUnrecoverableErrorDuringAdd(WriteException);
             return;
         }
@@ -2206,15 +2263,21 @@ public class LedgerHandle implements WriteHandle {
 
         // when the ensemble changes are too frequent, close handle
         if (ensembleChangeId > clientCtx.getConf().maxAllowedEnsembleChanges) {
-            LOG.info("{} reaches max allowed ensemble change number {}",
-                     logContext, clientCtx.getConf().maxAllowedEnsembleChanges);
+            log.info()
+                    .attr("logContext", logContext)
+                    .attr("maxAllowedEnsembleChanges", clientCtx.getConf().maxAllowedEnsembleChanges)
+                    .log("reaches max allowed ensemble change number");
             handleUnrecoverableErrorDuringAdd(WriteException);
             return;
         }
 
-        if (LOG.isDebugEnabled()) {
-            LOG.debug("{} Replacing {} in {}", logContext, failedBookies, origEnsemble);
-        }
+
+        log.debug()
+        .attr("logContext", logContext)
+        .attr("failedBookies", failedBookies)
+        .attr("origEnsemble", origEnsemble)
+        .log("Replacing in");
+
 
         AtomicInteger attempts = new AtomicInteger(0);
         new MetadataUpdateLoop(
@@ -2235,10 +2298,15 @@ public class LedgerHandle implements WriteHandle {
                     long newEnsembleStartEntry = getLastAddConfirmed() + 1;
                     checkState(lastEnsembleKey <= newEnsembleStartEntry,
                                "New ensemble must either replace the last ensemble, or add a new one");
-                    if (LOG.isDebugEnabled()) {
-                        LOG.debug("{}[attempt:{}] changing ensemble from: {} to: {} starting at entry: {}",
-                                  logContext, attempts.get(), currentEnsemble, newEnsemble, newEnsembleStartEntry);
-                    }
+
+                    log.debug()
+                    .attr("logContext", logContext)
+                    .attr("get", attempts.get())
+                    .attr("currentEnsemble", currentEnsemble)
+                    .attr("newEnsemble", newEnsemble)
+                    .attr("newEnsembleStartEntry", newEnsembleStartEntry)
+                    .log("[attempt:] changing ensemble from: to: starting at entry:");
+
 
                     if (lastEnsembleKey.equals(newEnsembleStartEntry)) {
                         return builder.replaceEnsembleEntry(newEnsembleStartEntry, newEnsemble).build();
@@ -2249,25 +2317,38 @@ public class LedgerHandle implements WriteHandle {
                 this::setLedgerMetadata)
             .run().whenCompleteAsync((metadata, ex) -> {
                     if (ex != null) {
-                        LOG.warn("{}[attempt:{}] Exception changing ensemble", logContext, attempts.get(), ex);
+                        log.warn()
+                                .exception(ex)
+                                .attr("logContext", logContext)
+                                .attr("get", attempts.get())
+                                .log("[attempt:] Exception changing ensemble");
                         handleUnrecoverableErrorDuringAdd(BKException.getExceptionCode(ex, WriteException));
                     } else if (metadata.getValue().isClosed()) {
-                        if (LOG.isDebugEnabled()) {
-                            LOG.debug("{}[attempt:{}] Metadata closed during attempt to replace bookie."
-                                      + " Another client must have recovered the ledger.", logContext, attempts.get());
-                        }
+
+                        log.debug()
+                        .attr("logContext", logContext)
+                        .attr("get", attempts.get())
+                        .log("[attempt:] Metadata closed during attempt to replace bookie."
+ + " Another client must have recovered the ledger.");
+
                         handleUnrecoverableErrorDuringAdd(BKException.Code.LedgerClosedException);
                     } else if (metadata.getValue().getState() == LedgerMetadata.State.IN_RECOVERY) {
-                        if (LOG.isDebugEnabled()) {
-                            LOG.debug("{}[attempt:{}] Metadata marked as in-recovery during attempt to replace bookie."
-                                      + " Another client must be recovering the ledger.", logContext, attempts.get());
-                        }
+
+                        log.debug()
+                        .attr("logContext", logContext)
+                        .attr("get", attempts.get())
+                        .log("[attempt:] Metadata marked as in-recovery during attempt to replace bookie."
+ + " Another client must be recovering the ledger.");
+
 
                         handleUnrecoverableErrorDuringAdd(BKException.Code.LedgerFencedException);
                     } else {
-                        if (LOG.isDebugEnabled()) {
-                            LOG.debug("{}[attempt:{}] Success updating metadata.", logContext, attempts.get());
-                        }
+
+                        log.debug()
+                                .attr("logContext", logContext)
+                                .attr("get", attempts.get())
+                                .log("[attempt:] Success updating metadata.");
+
 
                         List<BookieId> newEnsemble = null;
                         Set<Integer> replaced = null;
@@ -2280,7 +2361,10 @@ public class LedgerHandle implements WriteHandle {
                             } else {
                                 newEnsemble = getCurrentEnsemble();
                                 replaced = EnsembleUtils.diffEnsemble(origEnsemble, newEnsemble);
-                                LOG.info("New Ensemble: {} for ledger: {}", newEnsemble, ledgerId);
+                                log.info()
+                                        .attr("newEnsemble", newEnsemble)
+                                        .attr("ledgerId", ledgerId)
+                                        .log("New Ensemble: for ledger:");
 
                                 changingEnsemble = false;
                             }
@@ -2312,12 +2396,13 @@ public class LedgerHandle implements WriteHandle {
     }
 
     static class NoopCloseCallback implements CloseCallback {
+        private static final Logger noopLog = Logger.get(NoopCloseCallback.class);
         static NoopCloseCallback instance = new NoopCloseCallback();
 
         @Override
         public void closeComplete(int rc, LedgerHandle lh, Object ctx) {
             if (rc != BKException.Code.OK) {
-                LOG.warn("Close failed: {}", BKException.codeLogger(rc));
+                noopLog.warn().attr("codeLogger", BKException.codeLogger(rc)).log("Close failed");
             }
             // noop
         }

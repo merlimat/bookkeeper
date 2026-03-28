@@ -31,18 +31,17 @@ import org.apache.bookkeeper.http.HttpServer;
 import org.apache.bookkeeper.http.service.HttpEndpointService;
 import org.apache.bookkeeper.http.service.HttpServiceRequest;
 import org.apache.bookkeeper.http.service.HttpServiceResponse;
+import lombok.CustomLog;
 import org.apache.bookkeeper.net.BookieId;
 import org.apache.bookkeeper.net.BookieSocketAddress;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * HttpEndpointService that handle Bookkeeper list bookies related http request.
  * The GET method will list all bookies of type rw|ro in this bookkeeper cluster.
  */
+@CustomLog
 public class ListBookiesService implements HttpEndpointService {
 
-    static final Logger LOG = LoggerFactory.getLogger(ListBookiesService.class);
 
     protected ServerConfiguration conf;
     protected BookKeeperAdmin bka;
@@ -85,9 +84,10 @@ public class ListBookiesService implements HttpEndpointService {
                     hostname = resolved.getHostName();
                 }
                 output.putIfAbsent(b.toString(), hostname);
-                if (LOG.isDebugEnabled()) {
-                    LOG.debug("bookie: " + b + " hostname:" + hostname);
-                }
+                log.debug()
+                        .attr("bookie", b)
+                        .attr("hostname", hostname)
+                        .log("bookie info");
             }
             String jsonResponse = JsonUtil.toJson(output);
 

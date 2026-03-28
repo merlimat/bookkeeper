@@ -35,9 +35,8 @@ import org.apache.bookkeeper.http.service.HttpServiceResponse;
 import org.apache.bookkeeper.meta.LedgerManagerFactory;
 import org.apache.bookkeeper.meta.LedgerUnderreplicationManager;
 import org.apache.bookkeeper.meta.UnderreplicatedLedger;
+import lombok.CustomLog;
 import org.apache.commons.lang3.StringUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * HttpEndpointService that handle Bookkeeper list under replicated ledger related http request.
@@ -45,9 +44,9 @@ import org.slf4j.LoggerFactory;
  * <p>The GET method will list all ledger_ids of under replicated ledger.
  * User can filer wanted ledger by set parameter "missingreplica" and "excludingmissingreplica"
  */
+@CustomLog
 public class ListUnderReplicatedLedgerService implements HttpEndpointService {
 
-    static final Logger LOG = LoggerFactory.getLogger(ListUnderReplicatedLedgerService.class);
 
     protected ServerConfiguration conf;
     private final LedgerManagerFactory ledgerManagerFactory;
@@ -128,14 +127,12 @@ public class ListUnderReplicatedLedgerService implements HttpEndpointService {
                     response.setCode(HttpServer.StatusCode.OK);
                     String jsonResponse = JsonUtil
                             .toJson(printMissingReplica ? outputLedgersWithMissingReplica : outputLedgers);
-                    if (LOG.isDebugEnabled()) {
-                        LOG.debug("output body: " + jsonResponse);
-                    }
+                    log.debug().attr("body", jsonResponse).log("output body");
                     response.setBody(jsonResponse);
                     return response;
                 }
             } catch (Exception e) {
-                LOG.error("Exception occurred while listing under replicated ledgers", e);
+                log.error().exception(e).log("Exception occurred while listing under replicated ledgers");
                 response.setCode(HttpServer.StatusCode.NOT_FOUND);
                 response.setBody("Exception when get." + e.getMessage());
                 return response;

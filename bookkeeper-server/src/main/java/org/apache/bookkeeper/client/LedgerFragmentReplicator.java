@@ -60,8 +60,7 @@ import org.apache.bookkeeper.stats.StatsLogger;
 import org.apache.bookkeeper.stats.annotations.StatsDoc;
 import org.apache.bookkeeper.util.ByteBufList;
 import org.apache.zookeeper.AsyncCallback;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.CustomLog;
 
 /**
  * This is the helper class for replicating the fragments from one bookie to
@@ -71,6 +70,7 @@ import org.slf4j.LoggerFactory;
     name = REPLICATION_WORKER_SCOPE,
     help = "Ledger fragment replicator related stats"
 )
+@CustomLog
 public class LedgerFragmentReplicator {
 
     // BookKeeper instance
@@ -135,17 +135,16 @@ public class LedgerFragmentReplicator {
         this(bkc, NullStatsLogger.INSTANCE, conf);
     }
 
-    private static final Logger LOG = LoggerFactory
-            .getLogger(LedgerFragmentReplicator.class);
-
     private void replicateFragmentInternal(final LedgerHandle lh,
             final LedgerFragment lf,
             final AsyncCallback.VoidCallback ledgerFragmentMcb,
             final Set<BookieId> newBookies,
             final BiConsumer<Long, Long> onReadEntryFailureCallback) throws InterruptedException {
         if (!lf.isClosed()) {
-            LOG.error("Trying to replicate an unclosed fragment;"
-                      + " This is not safe {}", lf);
+            log.error()
+                    .attr("lf", lf)
+                    .log("Trying to replicate an unclosed fragment;"
+ + " This is not safe ");
             ledgerFragmentMcb.processResult(BKException.Code.UnclosedFragmentException,
                                             null, null);
             return;
@@ -158,8 +157,11 @@ public class LedgerFragmentReplicator {
          * INVALID_ENTRY_ID and viceversa.
          */
         if (startEntryId == INVALID_ENTRY_ID ^ endEntryId == INVALID_ENTRY_ID) {
-            LOG.error("For LedgerFragment: {}, seeing inconsistent firstStoredEntryId: {} and lastStoredEntryId: {}",
-                    lf, startEntryId, endEntryId);
+            log.error()
+                    .attr("lf", lf)
+                    .attr("startEntryId", startEntryId)
+                    .attr("endEntryId", endEntryId)
+                    .log("For LedgerFragment: , seeing inconsistent firstStoredEntryId: and lastStoredEntryId:");
             assert false;
         }
 
@@ -235,8 +237,10 @@ public class LedgerFragmentReplicator {
             throws InterruptedException {
         Set<LedgerFragment> partitionedFragments = splitIntoSubFragments(lh, lf,
                 bkc.getConf().getRereplicationEntryBatchSize());
-        LOG.info("Replicating fragment {} in {} sub fragments.",
-                lf, partitionedFragments.size());
+        log.info()
+                .attr("lf", lf)
+                .attr("size", partitionedFragments.size())
+                .log("Replicating fragment in sub fragments.");
         replicateNextBatch(lh, partitionedFragments.iterator(),
                 ledgerFragmentMcb, targetBookieAddresses, onReadEntryFailureCallback);
     }
@@ -300,8 +304,11 @@ public class LedgerFragmentReplicator {
          * INVALID_ENTRY_ID and viceversa.
          */
         if (firstEntryId == INVALID_ENTRY_ID ^ lastEntryId == INVALID_ENTRY_ID) {
-            LOG.error("For LedgerFragment: {}, seeing inconsistent firstStoredEntryId: {} and lastStoredEntryId: {}",
-                    ledgerFragment, firstEntryId, lastEntryId);
+            log.error()
+                    .attr("ledgerFragment", ledgerFragment)
+                    .attr("entryId", firstEntryId)
+                    .attr("entryId", lastEntryId)
+                    .log("For LedgerFragment: , seeing inconsistent firstStoredEntryId: and lastStoredEntryId:");
             assert false;
         }
 
@@ -365,8 +372,12 @@ public class LedgerFragmentReplicator {
             @Override
             public void writeComplete(int rc, long ledgerId, long entryId, BookieId addr, Object ctx) {
                 if (rc != BKException.Code.OK) {
-                    LOG.error("BK error writing entry for ledgerId: {}, entryId: {}, bookie: {}",
-                            ledgerId, entryId, addr, BKException.create(rc));
+                    log.error()
+                            .attr("ledgerId", ledgerId)
+                            .attr("entryId", entryId)
+                            .attr("bookieAddr", addr)
+                            .attr("create", BKException.create(rc))
+                            .log("BK error writing entry for ledgerId: , entryId: , bookie:");
                     if (completed.compareAndSet(false, true)) {
                         ledgerFragmentEntryMcb.processResult(rc, null, null);
                     }
@@ -375,10 +386,13 @@ public class LedgerFragmentReplicator {
                     if (ctx instanceof Long) {
                         numBytesWritten.registerSuccessfulValue((Long) ctx);
                     }
-                    if (LOG.isDebugEnabled()) {
-                        LOG.debug("Success writing ledger id {}, entry id {} to a new bookie {}!",
-                                ledgerId, entryId, addr);
-                    }
+
+                    log.debug()
+                    .attr("ledgerId", ledgerId)
+                    .attr("entryId", entryId)
+                    .attr("bookieAddr", addr)
+                    .log("Success writing ledger id , entry id to a new bookie !");
+
                     if (numCompleted.incrementAndGet() == newBookies.size() && completed.compareAndSet(false, true)) {
                         ledgerFragmentEntryMcb.processResult(rc, null, null);
                     }
@@ -397,8 +411,7 @@ public class LedgerFragmentReplicator {
             public void readComplete(int rc, LedgerHandle lh,
                     Enumeration<LedgerEntry> seq, Object ctx) {
                 if (rc != BKException.Code.OK) {
-                    LOG.error("BK error reading ledger entry: " + entryId,
-                            BKException.create(rc));
+                    log.error().attr("create", BKException.create(rc)).log("BK error reading ledger entry: " + entryId);
                     onReadEntryFailureCallback.accept(ledgerId, entryId);
                     ledgerFragmentEntryMcb.processResult(rc, null, null);
                     return;
@@ -466,8 +479,11 @@ public class LedgerFragmentReplicator {
                 @Override
                 public void readComplete(int rc, LedgerHandle lh, Enumeration<LedgerEntry> seq, Object ctx) {
                     if (rc != BKException.Code.OK) {
-                        LOG.error("BK error reading ledger entries: {} - {}",
-                                startEntryId, endEntryId, BKException.create(rc));
+                        log.error()
+                                .attr("startEntryId", startEntryId)
+                                .attr("endEntryId", endEntryId)
+                                .attr("create", BKException.create(rc))
+                                .log("BK error reading ledger entries: -");
                         onReadEntryFailureCallback.accept(lh.getId(), startEntryId);
                         for (int i = 0; i < entriesToReplicateCnt; i++) {
                             ledgerFragmentMcb.processResult(rc, null, null);
@@ -503,8 +519,12 @@ public class LedgerFragmentReplicator {
                             @Override
                             public void writeComplete(int rc, long ledgerId, long entryId, BookieId addr, Object ctx) {
                                 if (rc != BKException.Code.OK) {
-                                    LOG.error("BK error writing entry for ledgerId: {}, entryId: {}, bookie: {}",
-                                            ledgerId, entryId, addr, BKException.create(rc));
+                                    log.error()
+                                            .attr("ledgerId", ledgerId)
+                                            .attr("entryId", entryId)
+                                            .attr("bookieAddr", addr)
+                                            .attr("create", BKException.create(rc))
+                                            .log("BK error writing entry for ledgerId: , entryId: , bookie:");
                                     if (completed.compareAndSet(false, true)) {
                                         ledgerFragmentMcb.processResult(rc, null, null);
                                     }
@@ -513,10 +533,13 @@ public class LedgerFragmentReplicator {
                                     if (ctx instanceof Long) {
                                         numBytesWritten.registerSuccessfulValue((Long) ctx);
                                     }
-                                    if (LOG.isDebugEnabled()) {
-                                        LOG.debug("Success writing ledger id {}, entry id {} to a new bookie {}!",
-                                                ledgerId, entryId, addr);
-                                    }
+
+                                    log.debug()
+                                    .attr("ledgerId", ledgerId)
+                                    .attr("entryId", entryId)
+                                    .attr("bookieAddr", addr)
+                                    .log("Success writing ledger id , entry id to a new bookie !");
+
                                     if (numCompleted.incrementAndGet() == newBookies.size()
                                             && completed.compareAndSet(false, true)) {
                                         ledgerFragmentMcb.processResult(rc, null, null);
@@ -582,8 +605,10 @@ public class LedgerFragmentReplicator {
         @Override
         public void processResult(int rc, String path, Object ctx) {
             if (rc != BKException.Code.OK) {
-                LOG.error("BK error replicating ledger fragments for ledger: "
-                        + lh.getId(), BKException.create(rc));
+                log.error()
+                        .attr("create", BKException.create(rc))
+                        .log("BK error replicating ledger fragments for ledger: "
+                        + lh.getId());
                 ledgerFragmentsMcb.processResult(rc, null, null);
                 return;
             }
@@ -619,12 +644,17 @@ public class LedgerFragmentReplicator {
 
         updateLoop.run().whenComplete((result, ex) -> {
                 if (ex == null) {
-                    LOG.info("Updated ZK to point ledger fragments"
-                             + " from old bookies to new bookies: {}", oldBookie2NewBookie);
+                    log.info()
+                            .attr("oldBookie2NewBookie", oldBookie2NewBookie)
+                            .log("Updated ZK to point ledger fragments"
+ + " from old bookies to new bookies: ");
 
                     ensembleUpdatedCb.processResult(BKException.Code.OK, null, null);
                 } else {
-                    LOG.error("Error updating ledger config metadata for ledgerId {}", lh.getId(), ex);
+                    log.error()
+                            .exception(ex)
+                            .attr("ledgerId", lh.getId())
+                            .log("Error updating ledger config metadata for ledgerId");
 
                     ensembleUpdatedCb.processResult(
                             BKException.getExceptionCode(ex, BKException.Code.UnexpectedConditionException),

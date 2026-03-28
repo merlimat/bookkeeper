@@ -31,15 +31,13 @@ import org.apache.bookkeeper.proto.BookkeeperProtocol.Request;
 import org.apache.bookkeeper.proto.BookkeeperProtocol.Response;
 import org.apache.bookkeeper.proto.BookkeeperProtocol.StatusCode;
 import org.apache.bookkeeper.util.AvailabilityOfEntriesOfLedger;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.CustomLog;
 
 /**
  * A processor class for v3 entries of a ledger packets.
  */
+@CustomLog
 public class GetListOfEntriesOfLedgerProcessorV3 extends PacketProcessorBaseV3 implements Runnable {
-
-    private static final Logger LOG = LoggerFactory.getLogger(GetListOfEntriesOfLedgerProcessorV3.class);
     protected final GetListOfEntriesOfLedgerRequest getListOfEntriesOfLedgerRequest;
     protected final long ledgerId;
 
@@ -64,9 +62,7 @@ public class GetListOfEntriesOfLedgerProcessorV3 extends PacketProcessorBaseV3 i
             return getListOfEntriesOfLedgerResponse.build();
         }
 
-        if (LOG.isDebugEnabled()) {
-            LOG.debug("Received new getListOfEntriesOfLedger request: {}", request);
-        }
+        log.debug().attr("request", request).log("Received new getListOfEntriesOfLedger request");
         StatusCode status = StatusCode.EOK;
         AvailabilityOfEntriesOfLedger availabilityOfEntriesOfLedger = null;
         try {
@@ -77,10 +73,15 @@ public class GetListOfEntriesOfLedgerProcessorV3 extends PacketProcessorBaseV3 i
 
         } catch (Bookie.NoLedgerException e) {
             status = StatusCode.ENOLEDGER;
-            LOG.error("No ledger found while performing getListOfEntriesOfLedger from ledger: {}", ledgerId, e);
+            log.error()
+                    .exception(e)
+                    .attr("ledgerId", ledgerId)
+                    .log("No ledger found while performing getListOfEntriesOfLedger");
         } catch (IOException e) {
             status = StatusCode.EIO;
-            LOG.error("IOException while performing getListOfEntriesOfLedger from ledger: {}", ledgerId);
+            log.error()
+                    .attr("ledgerId", ledgerId)
+                    .log("IOException while performing getListOfEntriesOfLedger from ledger");
         }
 
         if (status == StatusCode.EOK) {

@@ -25,14 +25,13 @@ import java.util.Set;
 import java.util.SortedMap;
 import org.apache.bookkeeper.client.api.LedgerMetadata;
 import org.apache.bookkeeper.net.BookieId;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.CustomLog;
 
 /**
  * Utilities for working with ledger metadata.
  */
+@CustomLog
 public class LedgerMetadataUtils {
-    static final Logger LOG = LoggerFactory.getLogger(LedgerMetadataUtils.class);
 
     static List<BookieId> getCurrentEnsemble(LedgerMetadata metadata) {
         return getLastEnsembleValue(metadata);

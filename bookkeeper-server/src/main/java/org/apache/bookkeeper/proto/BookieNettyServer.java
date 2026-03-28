@@ -83,15 +83,13 @@ import org.apache.bookkeeper.stats.ThreadRegistry;
 import org.apache.bookkeeper.util.ByteBufList;
 import org.apache.bookkeeper.util.EventLoopUtil;
 import org.apache.zookeeper.KeeperException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.CustomLog;
 
 /**
  * Netty server for serving bookie requests.
  */
+@CustomLog
 class BookieNettyServer {
-
-    private static final Logger LOG = LoggerFactory.getLogger(BookieNettyServer.class);
     public static final String CONSOLIDATION_HANDLER_NAME = "consolidation";
 
     final int maxFrameSize;
@@ -162,8 +160,10 @@ class BookieNettyServer {
                         try {
                             CpuAffinity.acquireCore();
                         } catch (Throwable t) {
-                            LOG.warn("Failed to acquire CPU core for thread {} {}",
-                                    Thread.currentThread().getName(), t.getMessage(), t);
+                            log.warn()
+                                    .exception(t)
+                                    .attr("threadName", Thread.currentThread().getName())
+                                    .log("Failed to acquire CPU core for thread");
                         }
                     });
                 }
@@ -261,7 +261,7 @@ class BookieNettyServer {
                             result.addAll(Arrays.asList(certificates));
                             return result;
                         } catch (SSLPeerUnverifiedException err) {
-                            LOG.error("Failed to get peer certificates", err);
+                            log.error().exception(err).log("Failed to get peer certificates");
                             return Collections.emptyList();
                         }
 
@@ -274,7 +274,7 @@ class BookieNettyServer {
                     if (c != null) {
                         c.close();
                     }
-                    LOG.info("authplugin disconnected channel {}", channel);
+                    log.info().attr("channel", channel).log("authplugin disconnected channel");
                 }
 
                 @Override
@@ -284,7 +284,10 @@ class BookieNettyServer {
 
                 @Override
                 public void setAuthorizedId(BookKeeperPrincipal principal) {
-                    LOG.info("connection {} authenticated as {}", channel, principal);
+                    log.info()
+                            .attr("channel", channel)
+                            .attr("principal", principal)
+                            .log("connection authenticated");
                     authorizedId = principal;
                 }
 
@@ -366,7 +369,7 @@ class BookieNettyServer {
             });
 
             // Bind and start to accept incoming connections
-            LOG.info("Binding bookie-rpc endpoint to {}", address);
+            log.info().attr("address", address).log("Binding bookie-rpc endpoint");
             Channel listen = bootstrap.bind(address.getAddress(), address.getPort()).sync().channel();
 
             if (listen.localAddress() instanceof InetSocketAddress) {
@@ -430,7 +433,7 @@ class BookieNettyServer {
                     pipeline.addLast("contextHandler", contextHandler);
                 }
             });
-            LOG.info("Binding jvm bookie-rpc endpoint to {}", bookieId.toString());
+            log.info().attr("bookieId", bookieId.toString()).log("Binding jvm bookie-rpc endpoint");
             // use the same address 'name', so clients can find local Bookie still discovering them using ZK
             jvmBootstrap.bind(new LocalAddress(bookieId.toString())).sync();
             LocalBookiesRegistry.registerLocalBookieAddress(bookieId);
@@ -442,7 +445,7 @@ class BookieNettyServer {
     }
 
     void shutdown() {
-        LOG.info("Shutting down BookieNettyServer");
+        log.info("Shutting down BookieNettyServer");
         isRunning.set(false);
 
         if (!isClosed.compareAndSet(false, true)) {

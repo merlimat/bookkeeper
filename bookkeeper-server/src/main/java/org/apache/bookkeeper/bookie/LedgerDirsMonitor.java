@@ -39,14 +39,13 @@ import org.apache.bookkeeper.util.DiskChecker;
 import org.apache.bookkeeper.util.DiskChecker.DiskErrorException;
 import org.apache.bookkeeper.util.DiskChecker.DiskOutOfSpaceException;
 import org.apache.bookkeeper.util.DiskChecker.DiskWarnThresholdException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.CustomLog;
 
 /**
  * Thread to monitor the disk space periodically.
  */
+@CustomLog
 class LedgerDirsMonitor {
-    private static final Logger LOG = LoggerFactory.getLogger(LedgerDirsMonitor.class);
 
     private final int interval;
     private final ServerConfiguration conf;
@@ -85,7 +84,10 @@ class LedgerDirsMonitor {
                 try {
                     diskUsages.put(dir, diskChecker.checkDir(dir));
                 } catch (DiskErrorException e) {
-                    LOG.error("Ledger directory {} failed on disk checking : ", dir, e);
+                    log.error()
+                            .exception(e)
+                            .attr("dir", dir)
+                            .log("Ledger directory failed on disk checking");
                     // Notify disk failure to all listeners
                     for (LedgerDirsListener listener : ldm.getListeners()) {
                         listener.diskFailed(dir);
@@ -93,7 +95,10 @@ class LedgerDirsMonitor {
                 } catch (DiskWarnThresholdException e) {
                     diskUsages.compute(dir, (d, prevUsage) -> {
                         if (null == prevUsage || e.getUsage() != prevUsage) {
-                            LOG.warn("Ledger directory {} is almost full : usage {}", dir, e.getUsage());
+                            log.warn()
+                                    .attr("dir", dir)
+                                    .attr("usage", e.getUsage())
+                                    .log("Ledger directory is almost full : usage");
                         }
                         return e.getUsage();
                     });
@@ -103,7 +108,10 @@ class LedgerDirsMonitor {
                 } catch (DiskOutOfSpaceException e) {
                     diskUsages.compute(dir, (d, prevUsage) -> {
                         if (null == prevUsage || e.getUsage() != prevUsage) {
-                            LOG.error("Ledger directory {} is out-of-space : usage {}", dir, e.getUsage());
+                            log.error()
+                                    .attr("dir", dir)
+                                    .attr("usage", e.getUsage())
+                                    .log("Ledger directory is out-of-space : usage");
                         }
                         return e.getUsage();
                     });
@@ -118,7 +126,7 @@ class LedgerDirsMonitor {
             // bookie cannot get writable dir but considered to be writable
             ldm.getWritableLedgerDirs();
         } catch (NoWritableLedgerDirException e) {
-            LOG.warn("LedgerDirsMonitor check process: All ledger directories are non writable");
+            log.warn("LedgerDirsMonitor check process: All ledger directories are non writable");
             try {
                 // disk check can be frequent, so disable 'loggingNoWritable' to avoid log flooding.
                 ldm.getDirsAboveUsableThresholdSize(minUsableSizeForHighPriorityWrites, false);
@@ -142,12 +150,11 @@ class LedgerDirsMonitor {
                 float totalDiskUsage = diskChecker.getTotalDiskUsage(ldm.getAllLedgerDirs());
                 if (totalDiskUsage < conf.getDiskLowWaterMarkUsageThreshold()) {
                     makeWritable = true;
-                } else if (LOG.isDebugEnabled()) {
-                    LOG.debug(
-                            "Current TotalDiskUsage: {} is greater than LWMThreshold: {}."
-                                    + " So not adding any filledDir to WritableDirsList",
-                            totalDiskUsage, conf.getDiskLowWaterMarkUsageThreshold());
-                }
+                } else                    log.debug()
+                            .attr("totalDiskUsage", totalDiskUsage)
+                            .attr("lwmThreshold", conf.getDiskLowWaterMarkUsageThreshold())
+                            .log("Current TotalDiskUsage is greater than LWMThreshold."
+                                    + " So not adding any filledDir to WritableDirsList");
             }
             // Update all full-filled disk space usage
             for (File dir : fulfilledDirs) {
@@ -175,7 +182,7 @@ class LedgerDirsMonitor {
                 }
             }
         } catch (IOException ioe) {
-            LOG.error("Got IOException while monitoring Dirs", ioe);
+            log.error().exception(ioe).log("Got IOException while monitoring Dirs");
             for (LedgerDirsListener listener : ldm.getListeners()) {
                 listener.fatalError();
             }
@@ -236,10 +243,10 @@ class LedgerDirsMonitor {
 
     // shutdown disk monitoring daemon
     public void shutdown() {
-        LOG.info("Shutting down LedgerDirsMonitor");
+        log.info("Shutting down LedgerDirsMonitor");
         if (null != checkTask) {
-            if (checkTask.cancel(true) && LOG.isDebugEnabled()) {
-                LOG.debug("Failed to cancel check task in LedgerDirsMonitor");
+            if (checkTask.cancel(true)) {
+                log.debug("Failed to cancel check task in LedgerDirsMonitor");
             }
         }
         if (null != executor) {

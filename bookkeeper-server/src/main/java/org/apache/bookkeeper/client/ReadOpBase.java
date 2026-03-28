@@ -33,12 +33,10 @@ import org.apache.bookkeeper.client.api.LedgerEntries;
 import org.apache.bookkeeper.client.api.LedgerMetadata;
 import org.apache.bookkeeper.net.BookieId;
 import org.apache.bookkeeper.proto.BookkeeperInternalCallbacks;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.CustomLog;
 
+@CustomLog
 public abstract class ReadOpBase implements Runnable {
-
-    private static final Logger LOG = LoggerFactory.getLogger(ReadOpBase.class);
 
     protected ScheduledFuture<?> speculativeTask = null;
     protected final CompletableFuture<LedgerEntries> future;
@@ -196,15 +194,22 @@ public abstract class ReadOpBase implements Runnable {
             if (BKException.Code.NoSuchEntryException == rc
                     || BKException.Code.NoSuchLedgerExistsException == rc) {
                 ++numBookiesMissingEntry;
-                if (LOG.isDebugEnabled()) {
-                    LOG.debug("No such entry found on bookie.  L{} E{} bookie: {}",
-                            lh.ledgerId, eId, host);
-                }
+
+                log.debug()
+                .attr("ledgerId", lh.ledgerId)
+                .attr("entryId", eId)
+                .attr("bookieAddr", host)
+                .log("No such entry found on bookie. L E bookie:");
+
             } else {
-                if (LOG.isInfoEnabled()) {
-                    LOG.info("{} while reading L{} E{} from bookie: {}",
-                            errMsg, lh.ledgerId, eId, host);
-                }
+
+                log.info()
+                .attr("errorMsg", errMsg)
+                .attr("ledgerId", lh.ledgerId)
+                .attr("entryId", eId)
+                .attr("bookieAddr", host)
+                .log("while reading L E from bookie:");
+
             }
 
             lh.recordReadErrorOnBookie(bookieIndex);
@@ -255,11 +260,15 @@ public abstract class ReadOpBase implements Runnable {
                 @Override
                 public Boolean call() throws Exception {
                     if (!isComplete() && null != maybeSendSpeculativeRead(heardFromHostsBitSet)) {
-                        if (LOG.isDebugEnabled()) {
-                            LOG.debug("Send speculative read for {}. Hosts sent are {}, "
-                                            + " Hosts heard are {}, ensemble is {}.",
-                                    this, sentToHosts, heardFromHostsBitSet, ensemble);
-                        }
+
+                        log.debug()
+                        .attr("this", this)
+                        .attr("sentToHosts", sentToHosts)
+                        .attr("heardFromHostsBitSet", heardFromHostsBitSet)
+                        .attr("ensemble", ensemble)
+                        .log("Send speculative read for . Hosts sent are , "
+ + " Hosts heard are , ensemble is .");
+
                         return true;
                     }
                     return false;

@@ -38,16 +38,15 @@ import org.apache.bookkeeper.tools.cli.helpers.BookieCommand;
 import org.apache.bookkeeper.tools.framework.CliFlags;
 import org.apache.bookkeeper.tools.framework.CliSpec;
 import org.apache.bookkeeper.util.LedgerIdFormatter;
+import lombok.CustomLog;
 import org.apache.commons.lang3.StringUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * Command to listing under replicated ledgers.
  */
+@CustomLog
 public class ListUnderReplicatedCommand extends BookieCommand<ListUnderReplicatedCommand.LURFlags> {
 
-    static final Logger LOG = LoggerFactory.getLogger(ListUnderReplicatedCommand.class);
 
     private static final String NAME = "listunderreplicated";
     private static final String DESC = "List ledgers marked as underreplicated, with oprional options to specify "
@@ -155,14 +154,16 @@ public class ListUnderReplicatedCommand extends BookieCommand<ListUnderReplicate
                 }
 
                 long urLedgerId = underreplicatedLedger.getLedgerId();
-                LOG.info("{}", ledgerIdFormatter.formatLedgerId(urLedgerId));
+                log.info()
+                        .attr("ledgerId", ledgerIdFormatter.formatLedgerId(urLedgerId))
+                        .log("Under-replicated ledger");
                 long ctime = underreplicatedLedger.getCtime();
                 if (ctime != UnderreplicatedLedger.UNASSIGNED_CTIME) {
-                    LOG.info("\tCtime : {}", ctime);
+                    log.info().attr("ctime", ctime).log("Ctime");
                 }
                 if (printMissingReplica) {
                     underreplicatedLedger.getReplicaList().forEach((missingReplica) -> {
-                        LOG.info("\tMissingReplica : {}", missingReplica);
+                        log.info().attr("missingReplica", missingReplica).log("Missing replica");
                     });
                 }
                 if (printReplicationWorkerId) {
@@ -170,16 +171,18 @@ public class ListUnderReplicatedCommand extends BookieCommand<ListUnderReplicate
                         String replicationWorkerId = underreplicationManager
                                                          .getReplicationWorkerIdRereplicatingLedger(urLedgerId);
                         if (replicationWorkerId != null) {
-                            LOG.info("\tReplicationWorkerId : {}", replicationWorkerId);
+                            log.info().attr("replicationWorkerId", replicationWorkerId).log("Replication worker");
                         }
                     } catch (ReplicationException.UnavailableException e) {
-                        LOG.error("Failed to get ReplicationWorkerId rereplicating ledger {} -- {}", urLedgerId,
-                                  e.getMessage());
+                        log.error()
+                                .attr("ledgerId", urLedgerId)
+                                .attr("error", e.getMessage())
+                                .log("Failed to get ReplicationWorkerId rereplicating ledger");
                     }
                 }
             }
 
-            LOG.info("Under replicated ledger count: {}", underReplicatedLedgerCount.get());
+            log.info().attr("count", underReplicatedLedgerCount.get()).log("Under replicated ledger count");
             return null;
         });
         return true;

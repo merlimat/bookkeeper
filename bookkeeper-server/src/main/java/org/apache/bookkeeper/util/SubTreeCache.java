@@ -29,9 +29,8 @@ import java.util.Map;
 import java.util.Set;
 import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.WatchedEvent;
+import lombok.CustomLog;
 import org.apache.zookeeper.Watcher;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * Caching layer for traversing and monitoring changes on a znode subtree.
@@ -51,8 +50,8 @@ import org.slf4j.LoggerFactory;
  * <p>Finally, we'll allow (require, even) the user to cancel a registered watcher
  * once no longer interested.
  */
+@CustomLog
 public class SubTreeCache {
-    private static final Logger LOG = LoggerFactory.getLogger(SubTreeCache.class);
 
     /**
      * A tree provider.

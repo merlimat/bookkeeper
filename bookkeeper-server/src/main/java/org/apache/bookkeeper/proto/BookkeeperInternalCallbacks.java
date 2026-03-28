@@ -40,16 +40,14 @@ import org.apache.bookkeeper.util.AvailabilityOfEntriesOfLedger;
 import org.apache.bookkeeper.util.ByteBufList;
 import org.apache.bookkeeper.versioning.Versioned;
 import org.apache.zookeeper.AsyncCallback;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.CustomLog;
 
 /**
  * Declaration of a callback interfaces used in bookkeeper client library but
  * not exposed to the client application.
  */
+@CustomLog
 public class BookkeeperInternalCallbacks {
-
-    static final Logger LOG = LoggerFactory.getLogger(BookkeeperInternalCallbacks.class);
 
     /**
      * Callback for calls from BookieClient objects. Such calls are for replies
@@ -146,8 +144,10 @@ public class BookkeeperInternalCallbacks {
         public void getListOfEntriesOfLedgerComplete(int rc, long ledgerIdOfTheResponse,
                 AvailabilityOfEntriesOfLedger availabilityOfEntriesOfLedger) {
             if ((rc == BKException.Code.OK) && (ledgerIdOfTheRequest != ledgerIdOfTheResponse)) {
-                LOG.error("For getListOfEntriesOfLedger expected ledgerId in the response: {} actual ledgerId: {}",
-                        ledgerIdOfTheRequest, ledgerIdOfTheResponse);
+                log.error()
+                        .attr("expectedLedgerId", ledgerIdOfTheRequest)
+                        .attr("actualLedgerId", ledgerIdOfTheResponse)
+                        .log("For getListOfEntriesOfLedger expected ledgerId mismatch in response");
                 rc = BKException.Code.ReadException;
             }
             finish(rc, availabilityOfEntriesOfLedger, this);
@@ -330,7 +330,7 @@ public class BookkeeperInternalCallbacks {
         @Override
         public void processResult(int rc, String path, Object ctx) {
             if (rc != successRc) {
-                LOG.error("Error in multi callback : " + rc);
+                log.error().attr("rc", rc).log("Error in multi callback");
                 exceptions.add(rc);
             }
             tick();

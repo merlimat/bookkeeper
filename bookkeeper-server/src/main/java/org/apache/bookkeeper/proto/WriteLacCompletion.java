@@ -67,9 +67,7 @@ class WriteLacCompletion extends CompletionValue {
                 ? writeLacResponse.getStatus() : response.getStatus();
         long ledgerId = writeLacResponse.getLedgerId();
 
-        if (LOG.isDebugEnabled()) {
-            logResponse(status, "ledger", ledgerId);
-        }
+        logResponse(status, "ledger", ledgerId);
         int rc = convertStatus(status, BKException.Code.WriteException);
         cb.writeLacComplete(rc, ledgerId, perChannelBookieClient.bookieId, ctx);
     }

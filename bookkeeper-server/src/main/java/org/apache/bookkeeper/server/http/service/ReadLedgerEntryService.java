@@ -31,9 +31,8 @@ import org.apache.bookkeeper.conf.ServerConfiguration;
 import org.apache.bookkeeper.http.HttpServer;
 import org.apache.bookkeeper.http.service.HttpEndpointService;
 import org.apache.bookkeeper.http.service.HttpServiceRequest;
+import lombok.CustomLog;
 import org.apache.bookkeeper.http.service.HttpServiceResponse;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * HttpEndpointService that handle Bookkeeper read ledger entry related http request.
@@ -42,9 +41,9 @@ import org.slf4j.LoggerFactory;
  * User should set wanted "ledger_id", and can choose only print out wanted entry
  * by set parameter "start_entry_id", "end_entry_id" and "page".
  */
+@CustomLog
 public class ReadLedgerEntryService implements HttpEndpointService {
 
-    static final Logger LOG = LoggerFactory.getLogger(ReadLedgerEntryService.class);
 
     protected ServerConfiguration conf;
     protected BookKeeperAdmin bka;
@@ -106,9 +105,7 @@ public class ReadLedgerEntryService implements HttpEndpointService {
             }
 
             String jsonResponse = JsonUtil.toJson(output);
-            if (LOG.isDebugEnabled()) {
-                LOG.debug("output body:" + jsonResponse);
-            }
+            log.debug().attr("body", jsonResponse).log("output body");
             response.setBody(jsonResponse);
             response.setCode(HttpServer.StatusCode.OK);
             return response;

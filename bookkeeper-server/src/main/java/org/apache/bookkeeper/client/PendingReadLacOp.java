@@ -24,8 +24,7 @@ import org.apache.bookkeeper.net.BookieId;
 import org.apache.bookkeeper.proto.BookieClient;
 import org.apache.bookkeeper.proto.BookkeeperInternalCallbacks.ReadLacCallback;
 import org.apache.bookkeeper.proto.checksum.DigestManager.RecoveryData;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.CustomLog;
 
 /**
  * This represents a pending ReadLac operation.
@@ -42,8 +41,8 @@ import org.slf4j.LoggerFactory;
  * from bookies, and doesn't affect the correctness of the protocol.
  */
 
+@CustomLog
 class PendingReadLacOp implements ReadLacCallback {
-    static final Logger LOG = LoggerFactory.getLogger(PendingReadLacOp.class);
     LedgerHandle lh;
     BookieClient bookieClient;
     LacCallback cb;
@@ -121,8 +120,10 @@ class PendingReadLacOp implements ReadLacCallback {
             } catch (BKDigestMatchException e) {
                 // Too bad, this bookie did not give us a valid answer, we
                 // still might be able to recover. So, continue
-                LOG.error("Mac mismatch while reading  ledger: " + ledgerId + " LAC from bookie: "
-                        + currentEnsemble.get(bookieIndex));
+                log.error()
+                        .attr("ledgerId", ledgerId)
+                        .attr("bookieAddr", currentEnsemble.get(bookieIndex))
+                        .log("Mac mismatch while reading LAC from bookie");
                 rc = BKException.Code.DigestMatchException;
             }
         }
@@ -146,17 +147,21 @@ class PendingReadLacOp implements ReadLacCallback {
                 && coverageSet.checkCovered()
                 && !completed) {
             completed = true;
-            if (LOG.isDebugEnabled()) {
-                LOG.debug("Read LAC complete with enough validResponse for ledger: {} LAC: {}", ledgerId, maxLac);
-            }
+
+            log.debug()
+            .attr("ledgerId", ledgerId)
+            .attr("maxLac", maxLac)
+            .log("Read LAC complete with enough validResponse for ledger: LAC:");
+
             cb.getLacComplete(BKException.Code.OK, maxLac);
             return;
         }
 
         if (numResponsesPending == 0 && !completed) {
-            LOG.error(
-                    "While readLac ledger: {} did not hear success responses from all of ensemble, coverageSet is: {}",
-                    ledgerId, coverageSet);
+            log.error()
+                    .attr("ledgerId", ledgerId)
+                    .attr("coverageSet", coverageSet)
+                    .log("While readLac ledger: did not hear success responses from all of ensemble, coverageSet is:");
             cb.getLacComplete(lastSeenError, maxLac);
         }
     }
