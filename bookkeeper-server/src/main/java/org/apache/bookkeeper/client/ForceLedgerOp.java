@@ -25,15 +25,13 @@ import org.apache.bookkeeper.common.concurrent.FutureUtils;
 import org.apache.bookkeeper.net.BookieId;
 import org.apache.bookkeeper.proto.BookieClient;
 import org.apache.bookkeeper.proto.BookkeeperInternalCallbacks.ForceLedgerCallback;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.CustomLog;
 
 /**
  * This represents a request to sync the ledger on every bookie.
  */
+@CustomLog
 class ForceLedgerOp implements Runnable, ForceLedgerCallback {
-
-    private static final Logger LOG = LoggerFactory.getLogger(ForceLedgerOp.class);
     final CompletableFuture<Void> cb;
 
     DistributionSchedule.AckSet ackSet;
@@ -71,9 +69,12 @@ class ForceLedgerOp implements Runnable, ForceLedgerCallback {
         // remember that we are inside OrderedExecutor, this induces a strict ordering
         // on the sequence of events
         this.currentNonDurableLastAddConfirmed = lh.pendingAddsSequenceHead;
-        if (LOG.isDebugEnabled()) {
-            LOG.debug("force {} clientNonDurableLac {}", lh.ledgerId, currentNonDurableLastAddConfirmed);
-        }
+
+        log.debug()
+        .attr("ledgerId", lh.ledgerId)
+        .attr("nonDurableLac", currentNonDurableLastAddConfirmed)
+        .log("force clientNonDurableLac");
+
         // we need to send the request to every bookie in the ensamble
         this.ackSet = lh.distributionSchedule.getEnsembleAckSet();
 
@@ -108,17 +109,22 @@ class ForceLedgerOp implements Runnable, ForceLedgerCallback {
                 completed = true;
                 // we are able to say that every bookie sync'd its own journal
                 // for every acknowledged entry before issuing the force() call
-                if (LOG.isDebugEnabled()) {
-                    LOG.debug("After force on ledger {} updating LastAddConfirmed to {} ",
-                              ledgerId, currentNonDurableLastAddConfirmed);
-                }
+
+                log.debug()
+                .attr("ledgerId", ledgerId)
+                .attr("nonDurableLac", currentNonDurableLastAddConfirmed)
+                .log("After force on ledger updating LastAddConfirmed to");
+
                 lh.updateLastConfirmed(currentNonDurableLastAddConfirmed, lh.getLength());
                 FutureUtils.complete(cb, null);
             }
         } else {
             // at least one bookie failed, as we are waiting for all the bookies
             // we can fail immediately
-            LOG.error("ForceLedger did not succeed: Ledger {} on {}", ledgerId, addr);
+            log.error()
+                    .attr("ledgerId", ledgerId)
+                    .attr("bookieAddr", addr)
+                    .log("ForceLedger did not succeed: Ledger on");
             errored = true;
 
             // notify the failure

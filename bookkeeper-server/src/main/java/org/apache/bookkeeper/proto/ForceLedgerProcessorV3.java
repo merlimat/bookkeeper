@@ -31,12 +31,11 @@ import org.apache.bookkeeper.proto.BookkeeperProtocol.ForceLedgerResponse;
 import org.apache.bookkeeper.proto.BookkeeperProtocol.Request;
 import org.apache.bookkeeper.proto.BookkeeperProtocol.Response;
 import org.apache.bookkeeper.proto.BookkeeperProtocol.StatusCode;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.CustomLog;
 
 
+@CustomLog
 class ForceLedgerProcessorV3 extends PacketProcessorBaseV3 implements Runnable {
-    private static final Logger logger = LoggerFactory.getLogger(ForceLedgerProcessorV3.class);
 
     public ForceLedgerProcessorV3(Request request, BookieRequestHandler requestHandler,
                              BookieRequestProcessor requestProcessor) {
@@ -100,7 +99,10 @@ class ForceLedgerProcessorV3 extends PacketProcessorBaseV3 implements Runnable {
             requestProcessor.getBookie().forceLedger(ledgerId, wcb, requestHandler);
             status = StatusCode.EOK;
         } catch (Throwable t) {
-            logger.error("Unexpected exception while forcing ledger {} : ", ledgerId, t);
+            log.error()
+                    .exception(t)
+                    .attr("ledgerId", ledgerId)
+                    .log("Unexpected exception while forcing ledger");
             // some bad request which cause unexpected exception
             status = StatusCode.EBADREQ;
         }

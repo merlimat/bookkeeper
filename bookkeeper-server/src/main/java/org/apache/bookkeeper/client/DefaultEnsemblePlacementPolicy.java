@@ -38,16 +38,15 @@ import org.apache.bookkeeper.net.DNSToSwitchMapping;
 import org.apache.bookkeeper.proto.BookieAddressResolver;
 import org.apache.bookkeeper.stats.StatsLogger;
 import org.apache.commons.collections4.CollectionUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.CustomLog;
 
 /**
  * Default Ensemble Placement Policy, which picks bookies randomly.
  *
  * @see EnsemblePlacementPolicy
  */
+@CustomLog
 public class DefaultEnsemblePlacementPolicy implements EnsemblePlacementPolicy {
-    static final Logger LOG = LoggerFactory.getLogger(DefaultEnsemblePlacementPolicy.class);
     static final Set<BookieId> EMPTY_SET = new HashSet<BookieId>();
 
     private boolean isWeighted;

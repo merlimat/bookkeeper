@@ -26,7 +26,9 @@ import org.apache.bookkeeper.client.BKException;
 import org.apache.bookkeeper.common.util.MathUtils;
 import org.apache.bookkeeper.net.BookieId;
 import org.slf4j.MDC;
+import lombok.CustomLog;
 
+@CustomLog
 class AddCompletion extends CompletionValue implements BookkeeperInternalCallbacks.WriteCallback {
 
     static AddCompletion acquireAddCompletion(final CompletionKey key,
@@ -134,9 +136,7 @@ class AddCompletion extends CompletionValue implements BookkeeperInternalCallbac
 
     private void handleResponse(long ledgerId, long entryId,
                                 BookkeeperProtocol.StatusCode status) {
-        if (LOG.isDebugEnabled()) {
-            logResponse(status, "ledger", ledgerId, "entry", entryId);
-        }
+        logResponse(status, "ledger", ledgerId, "entry", entryId);
 
         int rc = convertStatus(status, BKException.Code.WriteException);
         writeComplete(rc, ledgerId, entryId, perChannelBookieClient.bookieId, ctx);

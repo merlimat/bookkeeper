@@ -43,14 +43,13 @@ import org.apache.bookkeeper.common.util.Watcher;
 import org.apache.bookkeeper.conf.ServerConfiguration;
 import org.apache.bookkeeper.stats.StatsLogger;
 import org.apache.bookkeeper.util.SnapshotMap;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.CustomLog;
 
 /**
  * A {@code IndexPersistenceMgr} is responsible for managing the persistence state for the index in a bookie.
  */
+@CustomLog
 public class IndexPersistenceMgr {
-    private static final Logger LOG = LoggerFactory.getLogger(IndexPersistenceMgr.class);
 
     private static final String IDX = ".idx";
     static final String RLOC = ".rloc";
@@ -96,7 +95,7 @@ public class IndexPersistenceMgr {
         this.ledgerDirsManager = ledgerDirsManager;
         this.pageSize = pageSize;
         this.entriesPerPage = entriesPerPage;
-        LOG.info("openFileLimit = {}", openFileLimit);
+        log.info().attr("openFileLimit", openFileLimit).log("openFileLimit =");
         // Retrieve all of the active ledgers.
         getActiveLedgers();
 
@@ -200,9 +199,12 @@ public class IndexPersistenceMgr {
                     boolean inWriteMap = writeFileInfoCache.asMap().remove(ledger, fi);
                     boolean inReadMap = readFileInfoCache.asMap().remove(ledger, fi);
                     if (inWriteMap || inReadMap) {
-                        LOG.error("Dead fileinfo({}) forced out of cache (write:{}, read:{}). "
-                                  + "It must have been double-released somewhere.",
-                                  fi, inWriteMap, inReadMap);
+                        log.error()
+                                .attr("fi", fi)
+                                .attr("inWriteMap", inWriteMap)
+                                .attr("inReadMap", inReadMap)
+                                .log("Dead fileinfo() forced out of cache (write:, read:). "
+                                        + "It must have been double-released somewhere.");
                     }
                     fi = null;
                 }
@@ -278,7 +280,7 @@ public class IndexPersistenceMgr {
                                 if (index.getName().endsWith(RLOC)) {
                                     if (findIndexFile(ledgerId) != null) {
                                         if (!index.delete()) {
-                                            LOG.warn("Deleting the rloc file " + index + " failed");
+                                            log.warn().attr("file", index).log("Deleting the rloc file failed");
                                         }
                                         continue;
                                     } else {
@@ -465,7 +467,7 @@ public class IndexPersistenceMgr {
             fi = getFileInfo(ledgerId, null);
             return fi.getExplicitLac();
         } catch (IOException e) {
-            LOG.error("Exception during getLastAddConfirmed", e);
+            log.error().exception(e).log("Exception during getLastAddConfirmed");
             return null;
         } finally {
             if (null != fi) {
@@ -526,7 +528,7 @@ public class IndexPersistenceMgr {
             relocateIndexFileAndFlushHeader(ledger, fi);
         } catch (Bookie.NoLedgerException nle) {
             // ledger has been deleted
-            LOG.info("No ledger {} found when flushing header.", ledger);
+            log.info().attr("ledger", ledger).log("No ledger found when flushing header.");
             return;
         } finally {
             if (null != fi) {
@@ -549,7 +551,7 @@ public class IndexPersistenceMgr {
                 fi = getFileInfo(l, null);
             } catch (Bookie.NoLedgerException nle) {
                 // ledger has been deleted
-                LOG.info("No ledger {} found when flushing entries.", l);
+                log.info().attr("l", l).log("No ledger found when flushing entries.");
                 return;
             }
 
@@ -563,7 +565,7 @@ public class IndexPersistenceMgr {
                     // send up a sequential list
                     int count = i - start;
                     if (count == 0) {
-                        LOG.warn("Count cannot possibly be zero!");
+                        log.warn("Count cannot possibly be zero!");
                     }
                     writeBuffers(l, entries, fi, start, count);
                     start = i;
@@ -571,16 +573,17 @@ public class IndexPersistenceMgr {
                 lastOffset = entries.get(i).getFirstEntry();
             }
             if (entries.size() - start == 0 && entries.size() != 0) {
-                LOG.warn("Nothing to write, but there were entries!");
+                log.warn("Nothing to write, but there were entries!");
             }
             writeBuffers(l, entries, fi, start, entries.size() - start);
             for (int i = 0; i < entries.size(); i++) {
                 LedgerEntryPage lep = entries.get(i);
                 lep.setClean(versions[i]);
             }
-            if (LOG.isDebugEnabled()) {
-                LOG.debug("Flushed ledger {} with {} pages.", l, entries.size());
-            }
+                log.debug()
+                        .attr("l", l)
+                        .attr("size", entries.size())
+                        .log("Flushed ledger with pages.");
         } finally {
             if (fi != null) {
                 fi.release();
@@ -591,9 +594,10 @@ public class IndexPersistenceMgr {
     private void writeBuffers(Long ledger,
                               List<LedgerEntryPage> entries, FileInfo fi,
                               int start, int count) throws IOException, Bookie.NoLedgerException {
-        if (LOG.isTraceEnabled()) {
-            LOG.trace("Writing {} buffers of {}", count, Long.toHexString(ledger));
-        }
+                                          log.trace()
+                                                  .attr("count", count)
+                                                  .attr("value", Long.toHexString(ledger))
+                                                  .log("Writing buffers of");
         if (count == 0) {
             return;
         }
@@ -663,7 +667,7 @@ public class IndexPersistenceMgr {
             // make sure the file size is aligned with index entry size
             // otherwise we may read incorrect data
             if (0 != size % LedgerEntryPage.getIndexEntrySize()) {
-                LOG.warn("Index file of ledger {} is not aligned with index entry size.", ledgerId);
+                log.warn().attr("ledgerId", ledgerId).log("Index file of ledger is not aligned with index entry size.");
                 size = size - size % LedgerEntryPage.getIndexEntrySize();
             }
             // we may not have the last entry in the cache

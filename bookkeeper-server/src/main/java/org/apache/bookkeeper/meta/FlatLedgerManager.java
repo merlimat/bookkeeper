@@ -28,8 +28,7 @@ import org.apache.bookkeeper.util.ZkUtils;
 import org.apache.zookeeper.AsyncCallback;
 import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.ZooKeeper;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.CustomLog;
 
 /**
  * Manage all ledgers in a single zk node.
@@ -39,9 +38,9 @@ import org.slf4j.LoggerFactory;
  * Each ledger node is prefixed with 'L'.
  * </p>
  */
+@CustomLog
 class FlatLedgerManager extends AbstractZkLedgerManager {
 
-    static final Logger LOG = LoggerFactory.getLogger(FlatLedgerManager.class);
     // path prefix to store ledger znodes
     private final String ledgerPrefix;
 

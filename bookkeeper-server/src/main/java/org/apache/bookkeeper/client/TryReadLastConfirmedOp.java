@@ -25,16 +25,14 @@ import org.apache.bookkeeper.proto.BookieClient;
 import org.apache.bookkeeper.proto.BookieProtocol;
 import org.apache.bookkeeper.proto.BookkeeperInternalCallbacks.ReadEntryCallback;
 import org.apache.bookkeeper.proto.checksum.DigestManager.RecoveryData;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.CustomLog;
 
 /**
  * This op is try to read last confirmed without involving quorum coverage checking.
  * Use {@link ReadLastConfirmedOp} if you need quorum coverage checking.
  */
+@CustomLog
 class TryReadLastConfirmedOp implements ReadEntryCallback {
-
-    static final Logger LOG = LoggerFactory.getLogger(TryReadLastConfirmedOp.class);
 
     final LedgerHandle lh;
     final BookieClient bookieClient;
@@ -67,20 +65,27 @@ class TryReadLastConfirmedOp implements ReadEntryCallback {
 
     @Override
     public void readEntryComplete(int rc, long ledgerId, long entryId, ByteBuf buffer, Object ctx) {
-        if (LOG.isTraceEnabled()) {
-            LOG.trace("TryReadLastConfirmed received response for (lid={}, eid={}) : {}",
-                    ledgerId, entryId, rc);
-        }
+
+        log.trace()
+        .attr("ledgerId", ledgerId)
+        .attr("entryId", entryId)
+        .attr("returnCode", rc)
+        .log("TryReadLastConfirmed received response for (lid=, eid=) :");
+
 
         int bookieIndex = (Integer) ctx;
         numResponsesPending--;
         if (BKException.Code.OK == rc) {
             try {
                 RecoveryData recoveryData = lh.macManager.verifyDigestAndReturnLastConfirmed(buffer);
-                if (LOG.isTraceEnabled()) {
-                    LOG.trace("Received lastAddConfirmed (lac={}, length={}) from bookie({}) for (lid={}).",
-                            recoveryData.getLastAddConfirmed(), recoveryData.getLength(), bookieIndex, ledgerId);
-                }
+
+                log.trace()
+                .attr("getLastAddConfirmed", recoveryData.getLastAddConfirmed())
+                .attr("getLength", recoveryData.getLength())
+                .attr("bookieIndex", bookieIndex)
+                .attr("ledgerId", ledgerId)
+                .log("Received lastAddConfirmed (lac=, length=) from bookie() for (lid=).");
+
                 if (recoveryData.getLastAddConfirmed() > maxRecoveredData.getLastAddConfirmed()) {
                     maxRecoveredData = recoveryData;
                     // callback immediately
@@ -88,9 +93,11 @@ class TryReadLastConfirmedOp implements ReadEntryCallback {
                 }
                 hasValidResponse = true;
             } catch (BKException.BKDigestMatchException e) {
-                LOG.error("Mac mismatch for ledger: " + ledgerId + ", entry: " + entryId
-                          + " while reading last entry from bookie: "
-                          + currentEnsemble.get(bookieIndex));
+                log.error()
+                        .attr("ledgerId", ledgerId)
+                        .attr("entryId", entryId)
+                        .attr("bookieAddr", currentEnsemble.get(bookieIndex))
+                        .log("Mac mismatch while reading last entry from bookie");
             }
         } else if (BKException.Code.UnauthorizedAccessException == rc && !completed) {
             cb.readLastConfirmedDataComplete(rc, maxRecoveredData);

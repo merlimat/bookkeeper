@@ -61,9 +61,7 @@ class ForceLedgerCompletion extends CompletionValue {
                 ? forceLedgerResponse.getStatus() : response.getStatus();
         long ledgerId = forceLedgerResponse.getLedgerId();
 
-        if (LOG.isDebugEnabled()) {
-            logResponse(status, "ledger", ledgerId);
-        }
+        logResponse(status, "ledger", ledgerId);
         int rc = convertStatus(status, BKException.Code.WriteException);
         cb.forceLedgerComplete(rc, ledgerId, perChannelBookieClient.bookieId, ctx);
     }

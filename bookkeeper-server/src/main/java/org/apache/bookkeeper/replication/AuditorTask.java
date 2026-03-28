@@ -36,11 +36,10 @@ import org.apache.bookkeeper.conf.ServerConfiguration;
 import org.apache.bookkeeper.meta.LedgerManager;
 import org.apache.bookkeeper.meta.LedgerUnderreplicationManager;
 import org.apache.bookkeeper.net.BookieId;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.CustomLog;
 
+@CustomLog
 abstract class AuditorTask implements Runnable {
-    private static final Logger LOG = LoggerFactory.getLogger(AuditorTask.class);
 
     protected final ServerConfiguration conf;
     protected AuditorStats auditorStats;
@@ -82,10 +81,13 @@ abstract class AuditorTask implements Runnable {
         if (null == ledgers || ledgers.size() == 0) {
             // there is no ledgers available for this bookie and just
             // ignoring the bookie failures
-            LOG.info("There is no ledgers for the failed bookie: {}", missingBookies);
+            log.info().attr("missingBookies", missingBookies).log("There are no ledgers for the failed bookie");
             return FutureUtils.Void();
         }
-        LOG.info("Following ledgers: {} of bookie: {} are identified as underreplicated", ledgers, missingBookies);
+        log.info()
+                .attr("ledgers", ledgers)
+                .attr("missingBookies", missingBookies)
+                .log("Following ledgers are identified as underreplicated");
         auditorStats.getNumUnderReplicatedLedger().registerSuccessfulValue(ledgers.size());
         LongAdder underReplicatedSize = new LongAdder();
         FutureUtils.processList(

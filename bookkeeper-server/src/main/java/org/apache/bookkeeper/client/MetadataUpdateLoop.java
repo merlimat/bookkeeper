@@ -27,8 +27,7 @@ import org.apache.bookkeeper.client.api.LedgerMetadata;
 import org.apache.bookkeeper.meta.LedgerManager;
 import org.apache.bookkeeper.versioning.Version;
 import org.apache.bookkeeper.versioning.Versioned;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.CustomLog;
 
 /**
  * Mechanism to safely update the metadata of a ledger.
@@ -46,8 +45,8 @@ import org.slf4j.LoggerFactory;
  * <p>All mutating operations are compare and swap operation. If the compare fails, another
  * iteration of the loop begins.
  */
+@CustomLog
 class MetadataUpdateLoop {
-    static final Logger LOG = LoggerFactory.getLogger(MetadataUpdateLoop.class);
 
     private final LedgerManager lm;
     private final long ledgerId;
@@ -124,10 +123,12 @@ class MetadataUpdateLoop {
 
     private void writeLoop(Versioned<LedgerMetadata> currentLocal,
                            CompletableFuture<Versioned<LedgerMetadata>> promise) {
-        if (LOG.isDebugEnabled()) {
-            LOG.debug("{} starting write loop iteration, attempt {}",
-                    logContext, WRITE_LOOP_COUNT_UPDATER.incrementAndGet(this));
-        }
+
+        log.debug()
+        .attr("logContext", logContext)
+        .attr("incrementAndGet", WRITE_LOOP_COUNT_UPDATER.incrementAndGet(this))
+        .log("starting write loop iteration, attempt");
+
         try {
             if (needsTransformation.needsUpdate(currentLocal.getValue())) {
                 LedgerMetadata transformed = transform.transform(currentLocal.getValue());
@@ -139,20 +140,22 @@ class MetadataUpdateLoop {
                     .whenComplete((writtenMetadata, ex) -> {
                             if (ex == null) {
                                 if (updateLocalValue.updateValue(currentLocal, writtenMetadata)) {
-                                    if (LOG.isDebugEnabled()) {
-                                        LOG.debug("{} success", logContext);
-                                    }
+
+                                    log.debug().attr("logContext", logContext).log("success");
+
                                     promise.complete(writtenMetadata);
                                 } else {
-                                    if (LOG.isDebugEnabled()) {
-                                        LOG.debug("{} local value changed while we were writing, try again",
-                                                logContext);
-                                    }
+
+                                    log.debug()
+                                            .attr("logContext", logContext)
+                                            .log("local value changed while we were writing, try again");
+
                                     writeLoop(currentLocalValue.get(), promise);
                                 }
                             } else if (ex instanceof BKException.BKMetadataVersionException) {
-                                LOG.info("{} conflict writing metadata to store, update local value and try again",
-                                         logContext);
+                                log.info()
+                                        .attr("logContext", logContext)
+                                        .log("conflict writing metadata to store, update local value and try again");
                                 updateLocalValueFromStore(ledgerId).whenComplete((readMetadata, readEx) -> {
                                         if (readEx == null) {
                                             writeLoop(readMetadata, promise);
@@ -161,18 +164,24 @@ class MetadataUpdateLoop {
                                         }
                                     });
                             } else {
-                                LOG.error("{} Error writing metadata to store", logContext, ex);
+                                log.error()
+                                        .exception(ex)
+                                        .attr("logContext", logContext)
+                                        .log("Error writing metadata to store");
                                 promise.completeExceptionally(ex);
                             }
                         });
             } else {
-                if (LOG.isDebugEnabled()) {
-                    LOG.debug("{} Update not needed, completing", logContext);
-                }
+
+                log.debug().attr("logContext", logContext).log("Update not needed, completing");
+
                 promise.complete(currentLocal);
             }
         } catch (Exception e) {
-            LOG.error("{} Exception updating", logContext, e);
+            log.error()
+                    .exception(e)
+                    .attr("logContext", logContext)
+                    .log("Exception updating");
             promise.completeExceptionally(e);
         }
     }
@@ -191,8 +200,10 @@ class MetadataUpdateLoop {
         lm.readLedgerMetadata(ledgerId).whenComplete(
                 (read, exception) -> {
                     if (exception != null) {
-                        LOG.error("{} Failed to read metadata from store",
-                                  logContext, exception);
+                        log.error()
+                                .exception(exception)
+                                .attr("logContext", logContext)
+                                .log("Failed to read metadata from store");
                         promise.completeExceptionally(exception);
                     } else if (current.getVersion().compare(read.getVersion()) == Version.Occurred.CONCURRENTLY) {
                         // no update needed, these are the same in the immutable world
