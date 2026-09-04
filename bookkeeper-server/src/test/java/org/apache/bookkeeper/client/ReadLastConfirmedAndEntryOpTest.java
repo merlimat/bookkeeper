@@ -198,6 +198,7 @@ public class ReadLastConfirmedAndEntryOpTest {
             anyLong(),
             anyBoolean(),
             any(ReadEntryCallback.class),
+            any(),
             any()
         );
 
