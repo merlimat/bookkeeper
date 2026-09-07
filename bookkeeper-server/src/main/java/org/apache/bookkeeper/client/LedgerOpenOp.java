@@ -391,7 +391,11 @@ class LedgerOpenOp {
                     return;
                 }
                 if (recovery) {
-                    op.initiate();
+                    if (keepUpdateMetadata) {
+                        op.initiateWithKeepUpdateMetadata();
+                    } else {
+                        op.initiate();
+                    }
                 } else {
                     op.initiateWithoutRecovery();
                 }
