@@ -230,6 +230,9 @@ public class LedgerHandle implements WriteHandle {
         this.pendingAddsSequenceHead = lastAddConfirmed;
 
         this.ledgerId = ledgerId;
+        // Two calls on purpose: chooseThread(long) hashes the raw id while chooseThread(Object) goes through
+        // hashCode(), and Long.hashCode folds the high bits. Boxing the id would move ledgers with ids >= 2^31
+        // to a different thread than the other ledger-id keyed dispatches (e.g. OrderedGenericCallback).
         this.executor = orderingKey == null
                 ? clientCtx.getMainWorkerPool().chooseThread(ledgerId)
                 : clientCtx.getMainWorkerPool().chooseThread(orderingKey);
