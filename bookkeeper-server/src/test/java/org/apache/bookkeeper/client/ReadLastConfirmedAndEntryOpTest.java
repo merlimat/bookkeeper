@@ -138,6 +138,9 @@ public class ReadLastConfirmedAndEntryOpTest {
         when(mockLh.getDistributionSchedule()).thenReturn(distributionSchedule);
         digestManager = new DummyDigestManager(LEDGERID, false, UnpooledByteBufAllocator.DEFAULT);
         when(mockLh.getDigestManager()).thenReturn(digestManager);
+        // the op issues its speculative reads through the handle's executor
+        when(mockLh.submitOrdered(any())).thenAnswer(
+                invocation -> orderedScheduler.submitOrdered(LEDGERID, invocation.getArgument(0)));
     }
 
     @After
