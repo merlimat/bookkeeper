@@ -24,7 +24,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.AbstractExecutorService;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
@@ -45,7 +44,7 @@ import org.apache.bookkeeper.stats.StatsLogger;
  * proceed with the next tasks.
  */
 @CustomLog
-public class SingleThreadExecutor extends AbstractExecutorService implements ExecutorService, Runnable {
+public class SingleThreadExecutor extends AbstractExecutorService implements ThreadBoundExecutor, Runnable {
 
     private static final int MAX_DRAIN_BATCH_SIZE = 1024;
 
@@ -120,7 +119,7 @@ public class SingleThreadExecutor extends AbstractExecutorService implements Exe
                 for (int i = 0; i < n; i++) {
                     Runnable task = localTasks[i];
                     localTasks[i] = null;
-                    if (!safeRunTask(task)) {
+                    if (!runQueuedTask(task)) {
                         return;
                     }
                 }
@@ -129,7 +128,7 @@ public class SingleThreadExecutor extends AbstractExecutorService implements Exe
             // Clear the queue in orderly shutdown
             Runnable task;
             while ((task = queue.poll()) != null) {
-                safeRunTask(task);
+                runQueuedTask(task);
             }
         } catch (InterruptedException ie) {
             // Exit loop when interrupted
@@ -142,6 +141,19 @@ public class SingleThreadExecutor extends AbstractExecutorService implements Exe
         }
     }
 
+    private boolean runQueuedTask(Runnable r) {
+        try {
+            return safeRunTask(r);
+        } finally {
+            decrementPendingTaskCount(1);
+        }
+    }
+
+    /**
+     * Runs a task, logging and counting a failure instead of propagating it.
+     *
+     * @return false when the task was interrupted
+     */
     private boolean safeRunTask(Runnable r) {
         try {
             r.run();
@@ -154,8 +166,6 @@ public class SingleThreadExecutor extends AbstractExecutorService implements Exe
                 tasksFailed.increment();
                 log.error().exception(t).log("Error while running task");
             }
-        } finally {
-            decrementPendingTaskCount(1);
         }
 
         return true;
@@ -218,6 +228,30 @@ public class SingleThreadExecutor extends AbstractExecutorService implements Exe
     @Override
     public void execute(Runnable r) {
         executeRunnableOrList(r, null);
+    }
+
+    @Override
+    public boolean isCurrentThread() {
+        return Thread.currentThread() == runner;
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>Failures of an inline run are logged and counted like those of queued tasks.
+     */
+    @Override
+    public void executeOrRun(Runnable r) {
+        if (state != State.Running) {
+            throw new RejectedExecutionException("Executor is shutting down");
+        }
+
+        if (isCurrentThread()) {
+            tasksCount.increment();
+            safeRunTask(r);
+        } else {
+            execute(r);
+        }
     }
 
     @VisibleForTesting
