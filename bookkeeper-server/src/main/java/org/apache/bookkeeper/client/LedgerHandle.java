@@ -51,7 +51,6 @@ import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
@@ -82,6 +81,7 @@ import org.apache.bookkeeper.client.impl.LedgerEntryImpl;
 import org.apache.bookkeeper.common.concurrent.FutureEventListener;
 import org.apache.bookkeeper.common.concurrent.FutureUtils;
 import org.apache.bookkeeper.common.util.MathUtils;
+import org.apache.bookkeeper.common.util.ThreadBoundExecutor;
 import org.apache.bookkeeper.net.BookieId;
 import org.apache.bookkeeper.proto.BookieProtocol;
 import org.apache.bookkeeper.proto.checksum.DigestManager;
@@ -106,7 +106,7 @@ public class LedgerHandle implements WriteHandle {
     final byte[] ledgerKey;
     private Versioned<LedgerMetadata> versionedMetadata;
     final long ledgerId;
-    final ExecutorService executor;
+    final ThreadBoundExecutor executor;
     long lastAddPushed;
     boolean notSupportBatch;
 
@@ -233,9 +233,11 @@ public class LedgerHandle implements WriteHandle {
         // Two calls on purpose: chooseThread(long) hashes the raw id while chooseThread(Object) goes through
         // hashCode(), and Long.hashCode folds the high bits. Boxing the id would move ledgers with ids >= 2^31
         // to a different thread than the other ledger-id keyed dispatches (e.g. OrderedGenericCallback).
-        this.executor = orderingKey == null
+        // The main worker pool is an OrderedExecutor, whose threads implement ThreadBoundExecutor whether or not
+        // they are decorated for task tracing or MDC preservation.
+        this.executor = (ThreadBoundExecutor) (orderingKey == null
                 ? clientCtx.getMainWorkerPool().chooseThread(ledgerId)
-                : clientCtx.getMainWorkerPool().chooseThread(orderingKey);
+                : clientCtx.getMainWorkerPool().chooseThread(orderingKey));
 
         if (clientCtx.getConf().enableStickyReads
                 && getLedgerMetadata().getEnsembleSize() == getLedgerMetadata().getWriteQuorumSize()) {
@@ -1119,8 +1121,9 @@ public class LedgerHandle implements WriteHandle {
             }
 
             if (isHandleWritable()) {
-                // Ledger handle in read/write mode: submit to OSE for ordered execution.
-                executeOrdered(op);
+                // Ledger handle in read/write mode: submit to OSE for ordered execution, unless the
+                // caller is already on the ledger's thread.
+                executor.executeOrRun(op);
             } else {
                 // Read-only ledger handle: bypass OSE and execute read directly in client thread.
                 // This avoids a context-switch to OSE thread and thus reduces latency.
@@ -1299,8 +1302,9 @@ public class LedgerHandle implements WriteHandle {
             }
 
             if (isHandleWritable()) {
-                // Ledger handle in read/write mode: submit to OSE for ordered execution.
-                executeOrdered(op);
+                // Ledger handle in read/write mode: submit to OSE for ordered execution, unless the
+                // caller is already on the ledger's thread.
+                executor.executeOrRun(op);
             } else {
                 // Read-only ledger handle: bypass OSE and execute read directly in client thread.
                 // This avoids a context-switch to OSE thread and thus reduces latency.
