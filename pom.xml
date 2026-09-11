@@ -188,7 +188,7 @@
     <protoc.version>${protobuf.version}</protoc.version>
     <protoc-gen-grpc-java.version>${grpc.version}</protoc-gen-grpc-java.version>
     <reflections.version>0.9.11</reflections.version>
-    <rocksdb.version>9.9.3</rocksdb.version>
+    <rocksdb.version>10.10.1.1</rocksdb.version>
     <shrinkwrap.version>3.3.0</shrinkwrap.version>
     <slf4j.version>2.0.12</slf4j.version>
     <slog.version>0.9.9</slog.version>

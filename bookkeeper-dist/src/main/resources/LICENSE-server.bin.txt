@@ -277,7 +277,7 @@ Apache Software License, Version 2.
 - lib/org.eclipse.jetty.ee8-jetty-ee8-security-12.1.10.jar [22]
 - lib/org.eclipse.jetty.ee8-jetty-ee8-servlet-12.1.10.jar [22]
 - lib/org.eclipse.jetty.toolchain-jetty-servlet-api-4.0.9.jar [22]
-- lib/org.rocksdb-rocksdbjni-9.9.3.jar [23]
+- lib/org.rocksdb-rocksdbjni-10.10.1.1.jar [23]
 - lib/com.beust-jcommander-1.82.jar [24]
 - lib/org.apache.datasketches-datasketches-java-7.0.1.jar [25]
 - lib/org.apache.datasketches-datasketches-memory-4.1.0.jar [27]
@@ -360,7 +360,7 @@ Apache Software License, Version 2.
 [20] Source available at https://github.com/apache/commons-lang/tree/LANG_3_6
 [21] Source available at https://github.com/apache/zookeeper/tree/release-3.8.0
 [22] Source available at https://github.com/jetty/jetty.project/tree/jetty-12.1.10
-[23] Source available at https://github.com/facebook/rocksdb/tree/v9.9.3
+[23] Source available at https://github.com/facebook/rocksdb/tree/v10.10.1
 [24] Source available at https://github.com/cbeust/jcommander/tree/1.82
 [25] Source available at https://github.com/apache/datasketches-java/tree/7.0.1
 [26] Source available at https://github.com/yawkat/lz4-java/tree/v1.10.2
@@ -620,7 +620,7 @@ This private header is also used by Apple's open source
     * http://www.opensource.apple.com/source/configd/configd-453.19/dnsinfo/dnsinfo.h
 
 ------------------------------------------------------------------------------------
-lib/org.rocksdb-rocksdbjni-9.9.3.jar is derived from leveldb, which is under the following license.
+lib/org.rocksdb-rocksdbjni-10.10.1.1.jar is derived from leveldb, which is under the following license.
 
 Copyright (c) 2011 The LevelDB Authors. All rights reserved.
 
